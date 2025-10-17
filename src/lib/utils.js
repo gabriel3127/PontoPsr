@@ -1,7 +1,17 @@
 ﻿export const timeToMinutes = (timeStr) => {
   if (!timeStr || timeStr === '-') return 0
-  const [hours, minutes] = timeStr.split(':').map(Number)
-  return hours * 60 + minutes
+  
+  // Verificar se é negativo
+  const isNegative = timeStr.startsWith('-')
+  
+  // Remover o sinal negativo para processar
+  const cleanTime = timeStr.replace('-', '')
+  
+  const [hours, minutes] = cleanTime.split(':').map(Number)
+  const totalMinutes = (hours * 60) + (minutes || 0)
+  
+  // Retornar com o sinal correto
+  return isNegative ? -totalMinutes : totalMinutes
 }
 
 export const minutesToTime = (minutes) => {

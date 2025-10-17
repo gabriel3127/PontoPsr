@@ -87,7 +87,11 @@ function AdminDashboard() {
     const [bancoCategoria, setBancoCategoria] = useState('')
     const [bancoFuncionario, setBancoFuncionario] = useState('')
     const [bancoYear, setBancoYear] = useState(new Date().getFullYear())
-    const [bancoFilter, setBancoFilter] = useState('individual') // individual, 3m, 6m, 12m, todos
+    const [bancoFilter, setBancoFilter] = useState('individual')
+    const [bancoMesInicio, setBancoMesInicio] = useState(null)
+    const [bancoMesFim, setBancoMesFim] = useState(null)
+    const [showCalendario, setShowCalendario] = useState(false)
+    const [calendarioTipo, setCalendarioTipo] = useState('inicio') // 'inicio' ou 'fim'
     const [bancoTodosCategoria, setBancoTodosCategoria] = useState('todas') // todas, ou ID da categoria
     const [showTransferModal, setShowTransferModal] = useState(false)
     const [showNewEmployeeModal, setShowNewEmployeeModal] = useState(false)
@@ -312,14 +316,14 @@ function AdminDashboard() {
     try {
       const totals = calculateTotals()
       let saldo
-      if (totals.totalFaixa1 > totals.totalDelays) {
-        // Horas extras > Atrasos: aplica multiplicador
-        const diferenca = totals.totalFaixa1 - totals.totalDelays
-        saldo = Math.round(diferenca * 1.5) + totals.totalFaixa2Calculado
-      } else {
-        // Horas extras <= Atrasos: sem multiplicador (arredondado)
-        saldo = Math.round(totals.totalFaixa1 - totals.totalDelays)
-      }    
+    if (totals.totalFaixa1 > totals.totalDelays) {
+      // Horas extras > Atrasos: aplica multiplicador
+      const diferenca = totals.totalFaixa1 - totals.totalDelays
+      saldo = Math.round(diferenca * 1.5) + totals.totalFaixa2Calculado
+    } else {
+      // Horas extras <= Atrasos: sem multiplicador (arredondado)
+      saldo = Math.round(totals.totalFaixa1 - totals.totalDelays)
+    }    
       await upsertBancoHoras(selectedFuncionario, selectedYear, selectedMonth, saldo)
       
       const funcionarioNome = funcionarios.find(e => e.id === selectedFuncionario)?.nome || 'Funcionário'
@@ -345,34 +349,97 @@ function AdminDashboard() {
   }
 
   const calculateFilteredTotal = () => {
-    const currentMonth = new Date().getMonth()
-    let startMonth = 0
-    
-    if (bancoFilter === '3m') startMonth = Math.max(0, currentMonth - 2)
-    else if (bancoFilter === '6m') startMonth = Math.max(0, currentMonth - 5)
-    else if (bancoFilter === '12m') startMonth = 0
-    else return 0
+    if (bancoFilter !== 'periodo' || !bancoMesInicio || !bancoMesFim) return 0
     
     let total = 0
-    for (let m = startMonth; m <= currentMonth; m++) {
-      const saldoStr = bancoHorasData[bancoYear]?.[m]
-      if (saldoStr && saldoStr !== '-') {
-        total += timeToMinutes(saldoStr)
+    
+    // Se mesmo ano
+    if (bancoMesInicio.ano === bancoMesFim.ano) {
+      for (let m = bancoMesInicio.mes; m <= bancoMesFim.mes; m++) {
+        const saldoStr = bancoHorasData[bancoMesInicio.ano]?.[m]
+        if (saldoStr && saldoStr !== '-') {
+          total += timeToMinutes(saldoStr)
+        }
+      }
+    } else {
+      // Ano inicial: do mês inicial até dezembro
+      for (let m = bancoMesInicio.mes; m <= 11; m++) {
+        const saldoStr = bancoHorasData[bancoMesInicio.ano]?.[m]
+        if (saldoStr && saldoStr !== '-') {
+          total += timeToMinutes(saldoStr)
+        }
+      }
+      
+      // Anos intermediários (se houver)
+      for (let a = bancoMesInicio.ano + 1; a < bancoMesFim.ano; a++) {
+        for (let m = 0; m <= 11; m++) {
+          const saldoStr = bancoHorasData[a]?.[m]
+          if (saldoStr && saldoStr !== '-') {
+            total += timeToMinutes(saldoStr)
+          }
+        }
+      }
+      
+      // Ano final: de janeiro até o mês final
+      for (let m = 0; m <= bancoMesFim.mes; m++) {
+        const saldoStr = bancoHorasData[bancoMesFim.ano]?.[m]
+        if (saldoStr && saldoStr !== '-') {
+          total += timeToMinutes(saldoStr)
+        }
       }
     }
+    
     return total
   }
 
-  if (loading) {
-    return (
-      <div className="w-full min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 text-lg">Carregando dados...</p>
+  // Componente de Calendário de Meses
+    function CalendarioMeses({ onSelect, onClose, anoInicial = new Date().getFullYear() }) {
+      const [ano, setAno] = useState(anoInicial)
+      
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+          <div className="bg-white rounded-lg p-6 max-w-md w-full m-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <button
+                onClick={() => setAno(ano - 1)}
+                className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded"
+              >
+                ←
+              </button>
+              <h3 className="text-xl font-bold">{ano}</h3>
+              <button
+                onClick={() => setAno(ano + 1)}
+                className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded"
+              >
+                →
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-3 gap-3">
+              {months.map((month, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    onSelect({ mes: idx, ano })
+                    onClose()
+                  }}
+                  className="px-4 py-3 bg-purple-100 hover:bg-purple-200 rounded-lg font-medium transition-all"
+                >
+                  {month}
+                </button>
+              ))}
+            </div>
+            
+            <button
+              onClick={onClose}
+              className="mt-6 w-full px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg"
+            >
+              Cancelar
+            </button>
+          </div>
         </div>
-      </div>
-    )
-  }
+      )
+    }
 
     const imprimirBancoHoras = () => {
     // Adicionar classe de impressão ao body
@@ -611,6 +678,9 @@ function AdminDashboard() {
                 Banco de Horas
               </button>
             </div>
+          </div>
+        </div>
+        
 
             {view === 'timesheet' && (
               <div className="flex gap-2 items-center flex-wrap">
@@ -681,22 +751,10 @@ function AdminDashboard() {
                     Individual
                   </button>
                   <button
-                    onClick={() => setBancoFilter('3m')}
-                    className={`px-3 py-1 rounded text-sm font-medium transition-all ${bancoFilter === '3m' ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-300'}`}
+                    onClick={() => setBancoFilter('periodo')}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-all ${bancoFilter === 'periodo' ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-300'}`}
                   >
-                    3 Meses
-                  </button>
-                  <button
-                    onClick={() => setBancoFilter('6m')}
-                    className={`px-3 py-1 rounded text-sm font-medium transition-all ${bancoFilter === '6m' ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-300'}`}
-                  >
-                    6 Meses
-                  </button>
-                  <button
-                    onClick={() => setBancoFilter('12m')}
-                    className={`px-3 py-1 rounded text-sm font-medium transition-all ${bancoFilter === '12m' ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-300'}`}
-                  >
-                    12 Meses
+                    Período
                   </button>
                   <button
                     onClick={() => setBancoFilter('todos')}
@@ -707,19 +765,19 @@ function AdminDashboard() {
                 </div>
 
                 {bancoFilter === 'todos' ? (
-                    <>
-                        <select
-                        value={bancoTodosCategoria}
-                        onChange={(e) => setBancoTodosCategoria(e.target.value)}
-                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
-                        >
-                        <option value="todas">Todas as Empresas</option>
-                        {categorias.map(cat => (
-                            <option key={cat.id} value={cat.id}>{cat.nome}</option>
-                        ))}
-                        </select>
-                    </>
-                    ) : (
+                  <>
+                    <select
+                      value={bancoTodosCategoria}
+                      onChange={(e) => setBancoTodosCategoria(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                    >
+                      <option value="todas">Todas as Empresas</option>
+                      {categorias.map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.nome}</option>
+                      ))}
+                    </select>
+                  </>
+                ) : (
                   <>
                     <select
                       value={bancoCategoria}
@@ -744,6 +802,38 @@ function AdminDashboard() {
                         <option key={func.id} value={func.id}>{func.nome}</option>
                       ))}
                     </select>
+
+                    {bancoFilter === 'periodo' && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setCalendarioTipo('inicio')
+                            setShowCalendario(true)
+                          }}
+                          className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 focus:ring-2 focus:ring-purple-500 outline-none"
+                        >
+                          {bancoMesInicio 
+                            ? `${months[bancoMesInicio.mes]}/${bancoMesInicio.ano}`
+                            : 'Mês Inicial'
+                          }
+                        </button>
+
+                        <span className="text-gray-500">até</span>
+
+                        <button
+                          onClick={() => {
+                            setCalendarioTipo('fim')
+                            setShowCalendario(true)
+                          }}
+                          className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 focus:ring-2 focus:ring-purple-500 outline-none"
+                        >
+                          {bancoMesFim 
+                            ? `${months[bancoMesFim.mes]}/${bancoMesFim.ano}`
+                            : 'Mês Final'
+                          }
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
                 
@@ -755,8 +845,6 @@ function AdminDashboard() {
                 />
               </div>
             )}
-          </div>
-        </div>
 
         {view === 'timesheet' && (
           <div className="bg-white rounded-lg shadow-md overflow-hidden">
@@ -984,13 +1072,11 @@ function AdminDashboard() {
               </button>
             </div>
             
-            {['3m', '6m', '12m'].includes(bancoFilter) && (
+            {bancoFilter === 'periodo' && bancoMesInicio && bancoMesFim && (
               <div className="mb-6 p-4 bg-purple-100 rounded-lg">
                 <div className="text-center">
                   <p className="text-sm text-gray-700 mb-2">
-                    {bancoFilter === '3m' && 'Total dos últimos 3 meses'}
-                    {bancoFilter === '6m' && 'Total dos últimos 6 meses'}
-                    {bancoFilter === '12m' && 'Total dos últimos 12 meses'}
+                    Total de {months[bancoMesInicio.mes]}/{bancoMesInicio.ano} a {months[bancoMesFim.mes]}/{bancoMesFim.ano}
                   </p>
                   <p className={`text-3xl font-bold ${calculateFilteredTotal() >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {minutesToTime(calculateFilteredTotal())}
@@ -1196,6 +1282,24 @@ function AdminDashboard() {
           </div>
         )}
       </div>
+
+            {/* Modal Calendário */}
+      {showCalendario && (
+        <CalendarioMeses
+          onSelect={(data) => {
+            if (calendarioTipo === 'inicio') {
+              setBancoMesInicio(data)
+            } else {
+              setBancoMesFim(data)
+            }
+          }}
+          onClose={() => setShowCalendario(false)}
+          anoInicial={calendarioTipo === 'inicio' 
+            ? (bancoMesInicio?.ano || new Date().getFullYear())
+            : (bancoMesFim?.ano || new Date().getFullYear())
+          }
+        />
+      )}
 
       {/* Modal Transferir */}
       {showTransferModal && (
