@@ -110,15 +110,6 @@ function Login() {
               </button>
             </form>
 
-            {/* Info */}
-            <div className="mt-8 text-center space-y-2">
-              <p className="text-xs text-gray-500">
-                Login padrão de teste:
-              </p>
-              <div className="text-xs bg-gray-100 p-3 rounded-lg space-y-1">
-                <p><strong>Admin:</strong> admin@empresa.com / admin123</p>
-              </div>
-            </div>
           </div>
         </div>
 

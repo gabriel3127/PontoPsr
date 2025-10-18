@@ -44,11 +44,24 @@ export const transferFuncionario = async (funcionarioId, newCategoriaId) => {
 }
 
 export const getRegistrosPonto = async (funcionarioId, ano, mes) => {
-  const startDate = new Date(ano, mes, 1).toISOString().split('T')[0]
-  const endDate = new Date(ano, mes + 1, 0).toISOString().split('T')[0]
-  const { data, error } = await supabase.from('registros_ponto').select('*').eq('funcionario_id', funcionarioId).gte('data', startDate).lte('data', endDate)
+  // mes vem como 0-11, precisa converter para 1-12 para a query
+  const startDate = new Date(ano, mes, 1)
+  const endDate = new Date(ano, mes + 1, 0)
+  
+  // Formatar as datas como YYYY-MM-DD
+  const startStr = `${ano}-${String(mes + 1).padStart(2, '0')}-01`
+  const endStr = `${ano}-${String(mes + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`
+  
+  const { data, error } = await supabase
+    .from('registros_ponto')
+    .select('*')
+    .eq('funcionario_id', funcionarioId)
+    .gte('data', startStr)
+    .lte('data', endStr)
+    .order('data')
+  
   if (error) throw error
-  return data
+  return data || []
 }
 
 export const upsertRegistroPonto = async (record) => {

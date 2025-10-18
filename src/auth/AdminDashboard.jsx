@@ -148,10 +148,11 @@ function AdminDashboard() {
       const recordsMap = {}
       
       recordsData.forEach(record => {
-        const date = new Date(record.data + 'T00:00:00')
-        const day = date.getDate()
-        const month = date.getMonth()
-        const year = date.getFullYear()
+        // PADRONIZAR: sempre usar formato YYYY-MM-DD do banco
+        const dateParts = record.data.split('-')
+        const year = parseInt(dateParts[0])
+        const month = parseInt(dateParts[1]) - 1 // Converter para 0-11
+        const day = parseInt(dateParts[2])
         
         const dateKey = `${year}-${month}-${day}`
         
@@ -219,7 +220,8 @@ function AdminDashboard() {
     
     try {
       const [year, month, day] = dateKey.split('-').map(Number)
-      const date = new Date(year, month, day).toISOString().split('T')[0]
+      // IMPORTANTE: ajustar mês de 0-11 para 1-12 para o banco
+      const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       
       const recordData = {
         funcionario_id: selectedFuncionario,

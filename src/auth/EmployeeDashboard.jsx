@@ -45,10 +45,11 @@ function EmployeeDashboard() {
       const recordsMap = {}
       
       recordsData.forEach(record => {
-        const date = new Date(record.data + 'T00:00:00')
-        const day = date.getDate()
-        const month = date.getMonth()
-        const year = date.getFullYear()
+        // PADRONIZAR: mesmo formato do AdminDashboard
+        const dateParts = record.data.split('-')
+        const year = parseInt(dateParts[0])
+        const month = parseInt(dateParts[1]) - 1 // Converter para 0-11
+        const day = parseInt(dateParts[2])
         
         const dateKey = `${year}-${month}-${day}`
         
