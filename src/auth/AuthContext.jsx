@@ -13,15 +13,21 @@ export const useAuth = () => {
 }
 
 export const AuthProvider = ({ children }) => {
+  const navigate = useNavigate() // ← APENAS UMA VEZ AQUI
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Verificar sessão existente
     checkUser()
 
-    // Escutar mudanças na autenticação
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth event:', event)
+      
+      if (event === 'PASSWORD_RECOVERY') {
+        // Não redirecionar em caso de recuperação de senha
+        return
+      }
+      
       if (session?.user) {
         await loadUserData(session.user)
       } else {
@@ -35,6 +41,13 @@ export const AuthProvider = ({ children }) => {
   const checkUser = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
+      
+      // Se estiver na página de reset, não carregar dados
+      if (window.location.pathname === '/reset-password') {
+        setLoading(false)
+        return
+      }
+      
       if (session?.user) {
         await loadUserData(session.user)
       }
@@ -77,8 +90,6 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const navigate = useNavigate()
-
   const login = async (email, senha) => {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -112,6 +123,7 @@ export const AuthProvider = ({ children }) => {
     try {
       await supabase.auth.signOut()
       setUser(null)
+      navigate('/login')
     } catch (error) {
       console.error('Erro no logout:', error)
     }

@@ -12,12 +12,18 @@ function ResetPassword() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    // Verificar se tem access_token na URL
+    // Capturar o token da URL
     const hashParams = new URLSearchParams(window.location.hash.substring(1))
     const accessToken = hashParams.get('access_token')
     const type = hashParams.get('type')
 
-    if (!accessToken || type !== 'recovery') {
+    if (accessToken && type === 'recovery') {
+      // Definir a sessão com o token
+      supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: hashParams.get('refresh_token')
+      })
+    } else {
       setError('Link inválido ou expirado')
     }
   }, [])
