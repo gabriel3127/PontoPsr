@@ -9,23 +9,48 @@ function ResetPassword() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [validToken, setValidToken] = useState(false)
+  const [checkingToken, setCheckingToken] = useState(true)
   const navigate = useNavigate()
 
   useEffect(() => {
-    // Capturar o token da URL
-    const hashParams = new URLSearchParams(window.location.hash.substring(1))
-    const accessToken = hashParams.get('access_token')
-    const type = hashParams.get('type')
+    const verifyToken = async () => {
+      try {
+        // Capturar o token da URL
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const accessToken = hashParams.get('access_token')
+        const type = hashParams.get('type')
 
-    if (accessToken && type === 'recovery') {
-      // Definir a sessão com o token
-      supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: hashParams.get('refresh_token')
-      })
-    } else {
-      setError('Link inválido ou expirado')
+        console.log('Token:', accessToken)
+        console.log('Type:', type)
+
+        if (!accessToken || type !== 'recovery') {
+          setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+          setValidToken(false)
+          setCheckingToken(false)
+          return
+        }
+
+        // Verificar se o token é válido
+        const { data, error } = await supabase.auth.getUser(accessToken)
+
+        if (error || !data.user) {
+          setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+          setValidToken(false)
+        } else {
+          setValidToken(true)
+          // Token válido, não fazer nada ainda - só permitir trocar senha
+        }
+      } catch (error) {
+        console.error('Erro ao verificar token:', error)
+        setError('Erro ao verificar link. Tente novamente.')
+        setValidToken(false)
+      } finally {
+        setCheckingToken(false)
+      }
     }
+
+    verifyToken()
   }, [])
 
   const handleResetPassword = async (e) => {
@@ -55,10 +80,13 @@ function ResetPassword() {
 
       setSuccess(true)
 
-      // Redirecionar para login após 2 segundos
+      // Fazer logout para garantir que precisa fazer login com a nova senha
+      await supabase.auth.signOut()
+
+      // Redirecionar para login após 3 segundos
       setTimeout(() => {
         navigate('/login')
-      }, 2000)
+      }, 3000)
 
     } catch (error) {
       console.error('Erro ao atualizar senha:', error)
@@ -68,6 +96,40 @@ function ResetPassword() {
     }
   }
 
+  // Verificando token
+  if (checkingToken) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 via-purple-700 to-purple-900 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Verificando link...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Token inválido
+  if (!validToken) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-600 via-red-700 to-red-900 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+          <div className="bg-red-100 w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center">
+            <AlertCircle size={40} className="text-red-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">Link Inválido</h1>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={() => navigate('/login')}
+            className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-colors"
+          >
+            Voltar para o Login
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Sucesso
   if (success) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-600 via-green-700 to-green-900 flex items-center justify-center p-4">
@@ -83,6 +145,7 @@ function ResetPassword() {
     )
   }
 
+  // Formulário de reset
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 via-purple-700 to-purple-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
