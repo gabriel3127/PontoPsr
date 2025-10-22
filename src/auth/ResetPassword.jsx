@@ -13,45 +13,79 @@ function ResetPassword() {
   const [checkingToken, setCheckingToken] = useState(true)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    const verifyToken = async () => {
-      try {
-        // Capturar o token da URL
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const accessToken = hashParams.get('access_token')
-        const type = hashParams.get('type')
+    useEffect(() => {
+      const verifyToken = async () => {
+        try {
+          // Tentar pegar do hash primeiro (#)
+          let hashParams = new URLSearchParams(window.location.hash.substring(1))
+          let accessToken = hashParams.get('access_token')
+          let type = hashParams.get('type')
 
-        console.log('Token:', accessToken)
-        console.log('Type:', type)
+          // Se não tiver no hash, tentar pegar da query string (?)
+          if (!accessToken) {
+            const searchParams = new URLSearchParams(window.location.search)
+            const token = searchParams.get('token')
+            type = searchParams.get('type')
+            
+            console.log('Token da query:', token)
+            console.log('Type da query:', type)
 
-        if (!accessToken || type !== 'recovery') {
-          setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+            if (!token || type !== 'recovery') {
+              setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+              setValidToken(false)
+              setCheckingToken(false)
+              return
+            }
+
+            // Usar o token da query para fazer login temporário
+            const { error: verifyError } = await supabase.auth.verifyOtp({
+              token_hash: token,
+              type: 'recovery'
+            })
+
+            if (verifyError) {
+              console.error('Erro ao verificar token:', verifyError)
+              setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+              setValidToken(false)
+            } else {
+              setValidToken(true)
+            }
+            
+            setCheckingToken(false)
+            return
+          }
+
+          // Se tiver access_token no hash, usar método antigo
+          console.log('Access Token:', accessToken)
+          console.log('Type:', type)
+
+          if (!accessToken || type !== 'recovery') {
+            setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+            setValidToken(false)
+            setCheckingToken(false)
+            return
+          }
+
+          // Verificar se o token é válido
+          const { data, error } = await supabase.auth.getUser(accessToken)
+
+          if (error || !data.user) {
+            setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+            setValidToken(false)
+          } else {
+            setValidToken(true)
+          }
+        } catch (error) {
+          console.error('Erro ao verificar token:', error)
+          setError('Erro ao verificar link. Tente novamente.')
           setValidToken(false)
+        } finally {
           setCheckingToken(false)
-          return
         }
-
-        // Verificar se o token é válido
-        const { data, error } = await supabase.auth.getUser(accessToken)
-
-        if (error || !data.user) {
-          setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
-          setValidToken(false)
-        } else {
-          setValidToken(true)
-          // Token válido, não fazer nada ainda - só permitir trocar senha
-        }
-      } catch (error) {
-        console.error('Erro ao verificar token:', error)
-        setError('Erro ao verificar link. Tente novamente.')
-        setValidToken(false)
-      } finally {
-        setCheckingToken(false)
       }
-    }
 
-    verifyToken()
-  }, [])
+      verifyToken()
+    }, [])
 
   const handleResetPassword = async (e) => {
     e.preventDefault()
