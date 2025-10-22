@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { useNavigate } from 'react-router-dom'
 
 const AuthContext = createContext({})
 
@@ -16,51 +17,104 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Verificar se há usuário salvo no localStorage
-    const savedUser = localStorage.getItem('user')
-    if (savedUser) {
-      setUser(JSON.parse(savedUser))
-    }
-    setLoading(false)
+    // Verificar sessão existente
+    checkUser()
+
+    // Escutar mudanças na autenticação
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        await loadUserData(session.user)
+      } else {
+        setUser(null)
+      }
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
-  const login = async (email, senha) => {
+  const checkUser = async () => {
     try {
-      // Buscar usuário no banco
-      const { data, error } = await supabase
-        .from('usuarios')
-        .select('*, funcionarios(id, nome, categoria_id)')
-        .eq('email', email)
-        .eq('senha_hash', senha)
-        .eq('ativo', true)
-        .single()
-
-      if (error || !data) {
-        throw new Error('Email ou senha incorretos')
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        await loadUserData(session.user)
       }
-
-      const userData = {
-        id: data.id,
-        email: data.email,
-        tipo: data.tipo,
-        funcionarioId: data.funcionario_id,
-        funcionarioNome: data.funcionarios?.nome || 'Admin',
-        categoriaId: data.funcionarios?.categoria_id || null
-      }
-
-      setUser(userData)
-      localStorage.setItem('user', JSON.stringify(userData))
-      
-      return { success: true, user: userData }
     } catch (error) {
-      console.error('Erro no login:', error)
-      return { success: false, error: error.message }
+      console.error('Erro ao verificar usuário:', error)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const logout = () => {
-    setUser(null)
-    localStorage.removeItem('user')
+  const loadUserData = async (authUser) => {
+    try {
+      // Buscar dados do funcionário vinculado
+      const { data: funcionario, error } = await supabase
+        .from('funcionarios')
+        .select('id, nome, email, tipo_usuario, categoria_id')
+        .eq('auth_id', authUser.id)
+        .single()
+
+      if (error) {
+        console.error('Erro ao carregar funcionário:', error)
+        throw error
+      }
+
+      const userData = {
+        authId: authUser.id,
+        id: funcionario.id,
+        funcionarioId: funcionario.id,
+        funcionarioNome: funcionario.nome,
+        nome: funcionario.nome,
+        email: funcionario.email,
+        tipo: funcionario.tipo_usuario,
+        categoriaId: funcionario.categoria_id
+      }
+
+      setUser(userData)
+    } catch (error) {
+      console.error('Erro ao carregar dados do usuário:', error)
+      setUser(null)
+    }
+  }
+
+  const navigate = useNavigate()
+
+  const login = async (email, senha) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: senha
+      })
+
+      if (error) throw error
+
+      await loadUserData(data.user)
+      
+      // Redirecionar após login
+      navigate('/dashboard')
+
+      return { success: true, user: user }
+    } catch (error) {
+      console.error('Erro no login:', error)
+      
+      let errorMessage = 'Erro ao fazer login'
+      if (error.message.includes('Invalid login credentials')) {
+        errorMessage = 'Email ou senha incorretos'
+      } else if (error.message.includes('Email not confirmed')) {
+        errorMessage = 'Email não confirmado'
+      }
+      
+      return { success: false, error: errorMessage }
+    }
+  }
+
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut()
+      setUser(null)
+    } catch (error) {
+      console.error('Erro no logout:', error)
+    }
   }
 
   const isAdmin = () => {
@@ -82,7 +136,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {children}
+      {!loading && children}
     </AuthContext.Provider>
   )
 }
