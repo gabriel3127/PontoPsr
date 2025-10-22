@@ -1,10 +1,12 @@
 ﻿import React from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import Login from './auth/Login'
 import AdminDashboard from './auth/AdminDashboard'
 import EmployeeDashboard from './auth/EmployeeDashboard'
+import ResetPassword from './auth/ResetPassword'
 
-function AppContent() {
+function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
 
   if (loading) {
@@ -18,30 +20,56 @@ function AppContent() {
     )
   }
 
-  // Se não estiver logado, mostra tela de login
   if (!user) {
-    return <Login />
+    return <Navigate to="/login" replace />
   }
 
-  // Se for admin, mostra dashboard completo
-  if (user.tipo === 'admin') {
+  return children
+}
+
+function DashboardRouter() {
+  const { user } = useAuth()
+
+  if (user?.tipo === 'admin') {
     return <AdminDashboard />
   }
 
-  // Se for funcionário, mostra dashboard limitado
-  if (user.tipo === 'funcionario') {
+  if (user?.tipo === 'funcionario') {
     return <EmployeeDashboard />
   }
 
-  // Fallback
-  return <Login />
+  return <Navigate to="/login" replace />
 }
 
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          {/* Rota pública de login */}
+          <Route path="/login" element={<Login />} />
+          
+          {/* Rota pública de reset de senha */}
+          <Route path="/reset-password" element={<ResetPassword />} />
+          
+          {/* Rota protegida do dashboard */}
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <DashboardRouter />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* Rota raiz redireciona para dashboard */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          
+          {/* Rota 404 */}
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   )
 }
 
