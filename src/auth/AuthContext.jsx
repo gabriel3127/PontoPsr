@@ -13,7 +13,7 @@ export const useAuth = () => {
 }
 
 export const AuthProvider = ({ children }) => {
-  const navigate = useNavigate() // ← APENAS UMA VEZ AQUI
+  const navigate = useNavigate()
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -21,18 +21,33 @@ export const AuthProvider = ({ children }) => {
     checkUser()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth event:', event)
+      console.log('Auth event:', event, 'Session:', session ? 'exists' : 'null')
       
+      // PASSWORD_RECOVERY: sessão existe mas não carregar dados do usuário
       if (event === 'PASSWORD_RECOVERY') {
-        // Não redirecionar em caso de recuperação de senha
+        console.log('✅ Password recovery - mantendo na página de reset')
+        setLoading(false)
         return
       }
       
+      // SIGNED_OUT: limpar usuário
+      if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setLoading(false)
+        return
+      }
+      
+      // SIGNED_IN ou INITIAL_SESSION com usuário
       if (session?.user) {
-        await loadUserData(session.user)
+        // Só carregar dados se NÃO estiver na página de reset
+        if (window.location.pathname !== '/reset-password') {
+          await loadUserData(session.user)
+        }
       } else {
         setUser(null)
       }
+      
+      setLoading(false)
     })
 
     return () => subscription.unsubscribe()
@@ -41,6 +56,8 @@ export const AuthProvider = ({ children }) => {
   const checkUser = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
+      
+      console.log('CheckUser - pathname:', window.location.pathname, 'session:', session ? 'exists' : 'null')
       
       // Se estiver na página de reset, não carregar dados
       if (window.location.pathname === '/reset-password') {
@@ -148,7 +165,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   )
 }
