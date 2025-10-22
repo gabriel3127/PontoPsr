@@ -9,89 +9,60 @@ function ResetPassword() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
-  const [validToken, setValidToken] = useState(false)
-  const [checkingToken, setCheckingToken] = useState(true)
+  const [verifying, setVerifying] = useState(true)
+  const [tokenValid, setTokenValid] = useState(false)
   const navigate = useNavigate()
 
-    useEffect(() => {
-      const verifyToken = async () => {
-        try {
-          // Tentar pegar do hash primeiro (#)
-          let hashParams = new URLSearchParams(window.location.hash.substring(1))
-          let accessToken = hashParams.get('access_token')
-          let type = hashParams.get('type')
+  useEffect(() => {
+    const verifyRecoveryToken = async () => {
+      try {
+        // Pegar o token da URL
+        const params = new URLSearchParams(window.location.search)
+        const token = params.get('token')
+        const type = params.get('type')
 
-          // Se não tiver no hash, tentar pegar da query string (?)
-          if (!accessToken) {
-            const searchParams = new URLSearchParams(window.location.search)
-            const token = searchParams.get('token')
-            type = searchParams.get('type')
-            
-            console.log('Token da query:', token)
-            console.log('Type da query:', type)
+        console.log('Token from URL:', token)
+        console.log('Type from URL:', type)
 
-            if (!token || type !== 'recovery') {
-              setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
-              setValidToken(false)
-              setCheckingToken(false)
-              return
-            }
-
-            // Usar o token da query para fazer login temporário
-            const { error: verifyError } = await supabase.auth.verifyOtp({
-              token_hash: token,
-              type: 'recovery'
-            })
-
-            if (verifyError) {
-              console.error('Erro ao verificar token:', verifyError)
-              setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
-              setValidToken(false)
-            } else {
-              setValidToken(true)
-            }
-            
-            setCheckingToken(false)
-            return
-          }
-
-          // Se tiver access_token no hash, usar método antigo
-          console.log('Access Token:', accessToken)
-          console.log('Type:', type)
-
-          if (!accessToken || type !== 'recovery') {
-            setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
-            setValidToken(false)
-            setCheckingToken(false)
-            return
-          }
-
-          // Verificar se o token é válido
-          const { data, error } = await supabase.auth.getUser(accessToken)
-
-          if (error || !data.user) {
-            setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
-            setValidToken(false)
-          } else {
-            setValidToken(true)
-          }
-        } catch (error) {
-          console.error('Erro ao verificar token:', error)
-          setError('Erro ao verificar link. Tente novamente.')
-          setValidToken(false)
-        } finally {
-          setCheckingToken(false)
+        if (!token || type !== 'recovery') {
+          setError('Link inválido ou expirado')
+          setTokenValid(false)
+          setVerifying(false)
+          return
         }
-      }
 
-      verifyToken()
-    }, [])
+        // Verificar o token OTP e criar sessão
+        const { data, error } = await supabase.auth.verifyOtp({
+          token_hash: token,
+          type: 'recovery'
+        })
+
+        console.log('VerifyOtp response:', { data, error })
+
+        if (error) {
+          console.error('Erro ao verificar token:', error)
+          setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+          setTokenValid(false)
+        } else {
+          console.log('✅ Token verificado! Sessão criada:', data)
+          setTokenValid(true)
+        }
+      } catch (err) {
+        console.error('Erro ao processar token:', err)
+        setError('Erro ao processar link. Tente novamente.')
+        setTokenValid(false)
+      } finally {
+        setVerifying(false)
+      }
+    }
+
+    verifyRecoveryToken()
+  }, [])
 
   const handleResetPassword = async (e) => {
     e.preventDefault()
     setError('')
 
-    // Validações
     if (newPassword.length < 6) {
       setError('A senha deve ter no mínimo 6 caracteres')
       return
@@ -110,40 +81,44 @@ function ResetPassword() {
         password: newPassword
       })
 
-      if (updateError) throw updateError
+      if (updateError) {
+        console.error('Erro ao atualizar senha:', updateError)
+        throw updateError
+      }
 
+      console.log('✅ Senha atualizada com sucesso!')
       setSuccess(true)
 
-      // Fazer logout para garantir que precisa fazer login com a nova senha
+      // Fazer logout
       await supabase.auth.signOut()
 
-      // Redirecionar para login após 3 segundos
+      // Redirecionar para login
       setTimeout(() => {
         navigate('/login')
       }, 3000)
 
     } catch (error) {
       console.error('Erro ao atualizar senha:', error)
-      setError(error.message || 'Erro ao atualizar senha')
+      setError(error.message || 'Erro ao atualizar senha. Tente novamente.')
     } finally {
       setLoading(false)
     }
   }
 
   // Verificando token
-  if (checkingToken) {
+  if (verifying) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 via-purple-700 to-purple-900 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Verificando link...</p>
+          <p className="text-gray-600 text-lg font-medium">Verificando link...</p>
         </div>
       </div>
     )
   }
 
   // Token inválido
-  if (!validToken) {
+  if (!tokenValid) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-600 via-red-700 to-red-900 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
@@ -179,12 +154,11 @@ function ResetPassword() {
     )
   }
 
-  // Formulário de reset
+  // Formulário
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 via-purple-700 to-purple-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-          {/* Header */}
           <div className="bg-gradient-to-r from-purple-600 to-purple-800 p-8 text-center">
             <div className="bg-white w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center">
               <Lock size={40} className="text-purple-600" />
@@ -193,7 +167,6 @@ function ResetPassword() {
             <p className="text-purple-200">Digite sua nova senha</p>
           </div>
 
-          {/* Form */}
           <div className="p-8">
             {error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3 text-red-700">
@@ -203,7 +176,6 @@ function ResetPassword() {
             )}
 
             <form onSubmit={handleResetPassword} className="space-y-6">
-              {/* Nova Senha */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Nova Senha
@@ -224,7 +196,6 @@ function ResetPassword() {
                 </div>
               </div>
 
-              {/* Confirmar Senha */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Confirmar Senha
@@ -245,7 +216,6 @@ function ResetPassword() {
                 </div>
               </div>
 
-              {/* Botão */}
               <button
                 type="submit"
                 disabled={loading}
@@ -264,7 +234,6 @@ function ResetPassword() {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="text-center mt-6 text-white text-sm">
           <button
             onClick={() => navigate('/login')}
