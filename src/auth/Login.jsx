@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useAuth } from './AuthContext'
+import { supabase } from '../lib/supabaseClient'
 import { Lock, Mail, AlertCircle } from 'lucide-react'
 
 function Login() {
@@ -27,6 +28,32 @@ function Login() {
     }
     
     setLoading(false)
+  }
+
+  const handleForgotPassword = async () => {
+    const emailToReset = email || prompt('Digite seu email:')
+    
+    if (!emailToReset) {
+      alert('Por favor, digite um email válido')
+      return
+    }
+    
+    setLoading(true)
+    setError('')
+    
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(emailToReset, {
+        redirectTo: window.location.origin + '/reset-password'
+      })
+      
+      if (error) throw error
+      
+      alert('✅ Email de recuperação enviado! Verifique sua caixa de entrada.')
+    } catch (error) {
+      setError('Erro ao enviar email: ' + error.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -91,6 +118,18 @@ function Login() {
                     disabled={loading}
                   />
                 </div>
+              </div>
+
+              {/* Esqueci minha senha */}
+              <div className="text-right">
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={loading}
+                  className="text-sm text-purple-600 hover:text-purple-800 hover:underline font-medium disabled:opacity-50 transition-colors"
+                >
+                  Esqueci minha senha
+                </button>
               </div>
 
               {/* Botão de Login */}
