@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Calendar, Clock, LogOut } from 'lucide-react'
+import { Calendar, Clock, LogOut, Database } from 'lucide-react'
 import Notifications from '../components/Notifications'
 import useNotifications from '../hooks/useNotifications'
 import { 
@@ -26,6 +26,7 @@ import {
   months 
 } from '../lib/utils'
 import { useAuth } from './AuthContext'
+import BackupSystem from './BackupSystem'
 
 // Adicionar estilos globais para impressão
 const printStyles = `
@@ -126,51 +127,64 @@ function AdminDashboard() {
     }
   }
 
-  useEffect(() => {
-    if (selectedFuncionario && view === 'timesheet') {
-      loadTimeRecords()
-    }
-  }, [selectedFuncionario, selectedMonth, selectedYear, view])
+// Adicione uma flag para evitar recarregar desnecessariamente
+const [isNavigating, setIsNavigating] = useState(false)
 
-  useEffect(() => {
-    if (view === 'banco') {
-      if (bancoFilter === 'todos') {
-        loadAllBancoHoras()
-      } else if (bancoFuncionario) {
-        loadBancoHoras()
-      }
-    }
-  }, [bancoFuncionario, bancoYear, bancoFilter, view])
+useEffect(() => {
+  if (selectedFuncionario && view === 'timesheet' && !isNavigating) {
+    loadTimeRecords()
+  }
+  setIsNavigating(false)
+}, [selectedFuncionario, selectedMonth, selectedYear, view])
 
-  const loadTimeRecords = async () => {
-    try {
-      const recordsData = await getRegistrosPonto(selectedFuncionario, selectedYear, selectedMonth)
-      const recordsMap = {}
+// Modifique a função loadTimeRecords para preservar dados não salvos
+const loadTimeRecords = async () => {
+  try {
+    const recordsData = await getRegistrosPonto(selectedFuncionario, selectedYear, selectedMonth)
+    const recordsMap = {}
+    
+    recordsData.forEach(record => {
+      const dateParts = record.data.split('-')
+      const year = parseInt(dateParts[0])
+      const month = parseInt(dateParts[1]) - 1
+      const day = parseInt(dateParts[2])
       
-      recordsData.forEach(record => {
-        // PADRONIZAR: sempre usar formato YYYY-MM-DD do banco
-        const dateParts = record.data.split('-')
-        const year = parseInt(dateParts[0])
-        const month = parseInt(dateParts[1]) - 1 // Converter para 0-11
-        const day = parseInt(dateParts[2])
-        
-        const dateKey = `${year}-${month}-${day}`
-        
-        recordsMap[dateKey] = {
-          entrada_manha: record.entrada_manha || '',
-          saida_almoco: record.saida_almoco || '',
-          retorno_almoco: record.retorno_almoco || '',
-          saida_tarde: record.saida_tarde || '',
-          tipo: record.tipo_dia || 'normal'
+      const dateKey = `${year}-${month}-${day}`
+      
+      recordsMap[dateKey] = {
+        entrada_manha: record.entrada_manha || '',
+        saida_almoco: record.saida_almoco || '',
+        retorno_almoco: record.retorno_almoco || '',
+        saida_tarde: record.saida_tarde || '',
+        tipo: record.tipo_dia || 'normal'
+      }
+    })
+    
+    // IMPORTANTE: Preservar dados em memória de outros meses
+    setRecords(prevRecords => {
+      // Manter registros de outros meses
+      const newRecords = {}
+      
+      // Preservar registros que não são do mês atual sendo carregado
+      Object.keys(prevRecords).forEach(key => {
+        const [keyYear, keyMonth] = key.split('-').map(Number)
+        if (keyYear !== selectedYear || keyMonth !== selectedMonth) {
+          newRecords[key] = prevRecords[key]
         }
       })
       
-      setRecords(recordsMap)
-    } catch (error) {
-      console.error('Erro ao carregar registros:', error)
-      showNotification('Erro ao carregar registros: ' + error.message, 'error')
-    }
+      // Adicionar os registros carregados do banco
+      Object.keys(recordsMap).forEach(key => {
+        newRecords[key] = recordsMap[key]
+      })
+      
+      return newRecords
+    })
+  } catch (error) {
+    console.error('Erro ao carregar registros:', error)
+    showNotification('Erro ao carregar registros: ' + error.message, 'error')
   }
+}
 
   const loadBancoHoras = async () => {
     try {
@@ -207,38 +221,50 @@ function AdminDashboard() {
     }
   }
 
-  const updateRecord = async (dateKey, field, value) => {
-    const newRecord = {
-      ...records[dateKey],
-      [field]: value
-    }
+const updateRecord = async (dateKey, field, value) => {
+  // Atualizar o estado local primeiro
+  const newRecord = {
+    ...records[dateKey],
+    [field]: value
+  }
+  
+  setRecords(prev => ({
+    ...prev,
+    [dateKey]: newRecord
+  }))
+  
+  // Salvar no banco IMEDIATAMENTE (não usar debounce)
+  try {
+    const [year, month, day] = dateKey.split('-').map(Number)
+    const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     
+    const recordData = {
+      funcionario_id: selectedFuncionario,
+      data: date,
+      entrada_manha: newRecord.entrada_manha || null,
+      saida_almoco: newRecord.saida_almoco || null,
+      retorno_almoco: newRecord.retorno_almoco || null,
+      saida_tarde: newRecord.saida_tarde || null,
+      tipo_dia: newRecord.tipo || 'normal'
+    }
+
+    // Salvar imediatamente no Supabase
+    await upsertRegistroPonto(recordData)
+    
+    // Mostrar feedback visual discreto (opcional)
+    // showNotification('Salvo automaticamente', 'success')
+    
+  } catch (error) {
+    console.error('Erro ao salvar registro:', error)
+    showNotification('Erro ao salvar: ' + error.message, 'error')
+    
+    // Reverter mudança em caso de erro
     setRecords(prev => ({
       ...prev,
-      [dateKey]: newRecord
+      [dateKey]: records[dateKey]
     }))
-    
-    try {
-      const [year, month, day] = dateKey.split('-').map(Number)
-      // IMPORTANTE: ajustar mês de 0-11 para 1-12 para o banco
-      const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-      
-      const recordData = {
-        funcionario_id: selectedFuncionario,
-        data: date,
-        entrada_manha: newRecord.entrada_manha || null,
-        saida_almoco: newRecord.saida_almoco || null,
-        retorno_almoco: newRecord.retorno_almoco || null,
-        saida_tarde: newRecord.saida_tarde || null,
-        tipo_dia: newRecord.tipo || 'normal'
-      }
-
-      await upsertRegistroPonto(recordData)
-    } catch (error) {
-      console.error('Erro ao salvar registro:', error)
-      showNotification('Erro ao salvar: ' + error.message, 'error')
-    }
   }
+}
 
   const handleTransferFuncionario = async (targetCategoriaId) => {
     try {
@@ -417,6 +443,18 @@ function AdminDashboard() {
               </button>
             </div>
             
+            <button 
+              onClick={() => setView('backup')}
+              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+                view === 'backup' 
+                  ? 'bg-purple-600 text-white shadow-lg' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              <Database size={20} />
+              Backup
+            </button>
+
             <div className="grid grid-cols-3 gap-3">
               {months.map((month, idx) => (
                 <button
@@ -834,6 +872,20 @@ function AdminDashboard() {
                             : 'Mês Final'
                           }
                         </button>
+
+                        <button
+                          onClick={() => setView('backup')}
+                          className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold ${
+                            view === 'backup' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700'
+                          }`}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                          </svg>
+                          Backup
+                        </button>
                       </>
                     )}
                   </>
@@ -1108,10 +1160,11 @@ function AdminDashboard() {
                             isNegativo ? 'text-red-600' : (saldoValue !== '-' ? 'text-blue-600' : 'text-gray-400')
                           }`}
                           onClick={() => {
-                            setSelectedFuncionario(bancoFuncionario)
-                            setSelectedCategoria(bancoCategoria)
+                            setSelectedFuncionario(funcionario.id)
+                            setSelectedCategoria(categoria.id)
                             setSelectedMonth(idx)
                             setSelectedYear(bancoYear)
+                            setBancoFilter('individual')
                             setView('timesheet')
                           }}
                         >
@@ -1284,6 +1337,10 @@ function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {view === 'backup' && (
+        <BackupSystem />
+      )}
 
             {/* Modal Calendário */}
       {showCalendario && (
