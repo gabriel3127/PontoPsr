@@ -1,62 +1,14 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { Download, Clock, CheckCircle, AlertCircle, Database, Calendar } from 'lucide-react'
+import { Download, Database, AlertCircle } from 'lucide-react'
 
 function BackupSystem() {
   const [loading, setLoading] = useState(false)
-  const [lastBackup, setLastBackup] = useState(null)
-  const [backupHistory, setBackupHistory] = useState([])
-  const [autoBackupEnabled, setAutoBackupEnabled] = useState(true)
+  const [message, setMessage] = useState('')
 
-  useEffect(() => {
-    loadBackupHistory()
-    
-    // Verificar se precisa fazer backup automático
-    checkAutoBackup()
-    
-    // Verificar a cada hora
-    const interval = setInterval(checkAutoBackup, 60 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [])
-
-  const loadBackupHistory = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('backup_log')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(10)
-
-      if (!error && data) {
-        setBackupHistory(data)
-        if (data.length > 0) {
-          setLastBackup(new Date(data[0].created_at))
-        }
-      }
-    } catch (error) {
-      console.error('Erro ao carregar histórico:', error)
-    }
-  }
-
-  const checkAutoBackup = () => {
-    if (!autoBackupEnabled) return
-
-    const now = new Date()
-    const hour = now.getHours()
-    
-    // Fazer backup automático às 18h (fim do expediente)
-    if (hour === 18 && (!lastBackup || isNewDay(lastBackup))) {
-      performBackup(true)
-    }
-  }
-
-  const isNewDay = (date) => {
-    const now = new Date()
-    return date.toDateString() !== now.toDateString()
-  }
-
-  const performBackup = async (isAutomatic = false) => {
+  const performBackup = async () => {
     setLoading(true)
+    setMessage('')
     
     try {
       // 1. Buscar todos os dados para backup
@@ -67,7 +19,6 @@ function BackupSystem() {
           funcionarios (
             nome,
             email,
-            tipo_usuario,
             categorias (nome)
           )
         `)
@@ -96,101 +47,113 @@ function BackupSystem() {
 
       if (funcError) throw funcError
 
-      // 2. Gerar CSV dos registros de ponto
-      const csvRegistros = generateCSV(registros, [
-        'data',
-        'funcionario_nome',
-        'categoria',
-        'entrada',
-        'saida_almoco',
-        'retorno_almoco',
-        'saida',
-        'horas_trabalhadas',
-        'observacoes'
-      ])
-
-      // 3. Gerar CSV do banco de horas
-      const csvBancoHoras = generateCSV(bancoHoras, [
-        'funcionario_nome',
-        'ano',
-        'mes',
-        'saldo_minutos'
-      ])
-
-      // 4. Gerar CSV dos funcionários
-      const csvFuncionarios = generateCSV(funcionarios, [
-        'nome',
-        'email',
-        'categoria',
-        'tipo_usuario',
-        'ativo'
-      ])
-
-      // 5. Criar arquivo ZIP (simulado - na prática, fazer download múltiplo)
+      // 2. Gerar CSVs
       const timestamp = new Date().toISOString().split('T')[0]
       
-      // Download dos arquivos
+      // CSV Registros de Ponto
+      const csvRegistros = generateCSVRegistros(registros)
       downloadCSV(csvRegistros, `backup_registros_${timestamp}.csv`)
-      setTimeout(() => downloadCSV(csvBancoHoras, `backup_banco_horas_${timestamp}.csv`), 500)
-      setTimeout(() => downloadCSV(csvFuncionarios, `backup_funcionarios_${timestamp}.csv`), 1000)
+      
+      // CSV Banco de Horas (com delay)
+      setTimeout(() => {
+        const csvBancoHoras = generateCSVBancoHoras(bancoHoras)
+        downloadCSV(csvBancoHoras, `backup_banco_horas_${timestamp}.csv`)
+      }, 500)
+      
+      // CSV Funcionários (com delay)
+      setTimeout(() => {
+        const csvFuncionarios = generateCSVFuncionarios(funcionarios)
+        downloadCSV(csvFuncionarios, `backup_funcionarios_${timestamp}.csv`)
+      }, 1000)
 
-      // 6. Registrar backup no log
-      await supabase
-        .from('backup_log')
-        .insert([{
-          tipo: isAutomatic ? 'automatico' : 'manual',
-          registros_count: registros.length,
-          status: 'concluido'
-        }])
-
-      setLastBackup(new Date())
-      await loadBackupHistory()
-
-      alert('✅ Backup realizado com sucesso!')
+      setMessage(`✅ Backup realizado com sucesso! ${registros.length} registros exportados.`)
 
     } catch (error) {
       console.error('Erro ao fazer backup:', error)
-      alert('❌ Erro ao fazer backup: ' + error.message)
+      setMessage('❌ Erro ao fazer backup: ' + error.message)
     } finally {
       setLoading(false)
     }
   }
 
-  const generateCSV = (data, columns) => {
-    if (!data || data.length === 0) return ''
+  const generateCSVRegistros = (data) => {
+    if (!data || data.length === 0) return 'Nenhum registro encontrado'
 
-    // Header
-    let csv = columns.join(',') + '\n'
+    let csv = 'Data,Funcionário,Categoria,Entrada,Saída Almoço,Retorno Almoço,Saída,Horas Trabalhadas,Tipo,Observações\n'
 
-    // Rows
     data.forEach(row => {
-      const values = columns.map(col => {
-        let value = ''
-        
-        if (col === 'funcionario_nome') {
-          value = row.funcionarios?.nome || ''
-        } else if (col === 'categoria') {
-          value = row.funcionarios?.categorias?.nome || row.categorias?.nome || ''
-        } else {
-          value = row[col] || ''
-        }
-        
-        // Escapar vírgulas e aspas
-        if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
-          value = `"${value.replace(/"/g, '""')}"`
-        }
-        
-        return value
-      })
+      const funcionarioNome = row.funcionarios?.nome || 'N/A'
+      const categoria = row.funcionarios?.categorias?.nome || 'N/A'
       
-      csv += values.join(',') + '\n'
+      csv += [
+        row.data || '',
+        funcionarioNome,
+        categoria,
+        row.entrada_manha || '',
+        row.saida_almoco || '',
+        row.retorno_almoco || '',
+        row.saida_tarde || '',
+        row.horas_trabalhadas || '',
+        row.tipo_dia || 'normal',
+        row.observacoes || ''
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',') + '\n'
     })
 
     return csv
   }
 
+  const generateCSVBancoHoras = (data) => {
+    if (!data || data.length === 0) return 'Nenhum registro encontrado'
+
+    let csv = 'Funcionário,Ano,Mês,Saldo (minutos),Saldo (horas)\n'
+
+    data.forEach(row => {
+      const funcionarioNome = row.funcionarios?.nome || 'N/A'
+      const saldoHoras = minutesToTime(row.saldo_minutos || 0)
+      
+      csv += [
+        funcionarioNome,
+        row.ano || '',
+        row.mes || '',
+        row.saldo_minutos || 0,
+        saldoHoras
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',') + '\n'
+    })
+
+    return csv
+  }
+
+  const generateCSVFuncionarios = (data) => {
+    if (!data || data.length === 0) return 'Nenhum funcionário encontrado'
+
+    let csv = 'Nome,Email,Categoria,Tipo,Ativo\n'
+
+    data.forEach(row => {
+      const categoria = row.categorias?.nome || 'N/A'
+      
+      csv += [
+        row.nome || '',
+        row.email || '',
+        categoria,
+        row.tipo_usuario || 'funcionario',
+        row.ativo ? 'Sim' : 'Não'
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',') + '\n'
+    })
+
+    return csv
+  }
+
+  const minutesToTime = (minutes) => {
+    const isNegative = minutes < 0
+    const absMinutes = Math.abs(minutes)
+    const hours = Math.floor(absMinutes / 60)
+    const mins = absMinutes % 60
+    return `${isNegative ? '-' : ''}${hours}h${mins.toString().padStart(2, '0')}`
+  }
+
   const downloadCSV = (csvContent, filename) => {
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const BOM = '\uFEFF' // UTF-8 BOM para Excel reconhecer acentos
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     const url = URL.createObjectURL(blob)
     
@@ -201,33 +164,35 @@ function BackupSystem() {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-  }
-
-  const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
+    URL.revokeObjectURL(url)
   }
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Database size={28} className="text-purple-600" />
+          <Database size={32} className="text-purple-600" />
           <div>
             <h2 className="text-2xl font-bold text-gray-800">Sistema de Backup</h2>
-            <p className="text-sm text-gray-500">Backup automático e manual dos dados</p>
+            <p className="text-sm text-gray-500">Exportar dados em formato CSV</p>
           </div>
         </div>
+      </div>
+
+      {/* Card de ação */}
+      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-lg p-8 text-center">
+        <Database size={64} className="mx-auto text-purple-600 mb-4" />
+        <h3 className="text-xl font-bold text-gray-800 mb-2">
+          Fazer Backup dos Dados
+        </h3>
+        <p className="text-gray-600 mb-6">
+          Exporta todos os registros de ponto, banco de horas e funcionários em arquivos CSV
+        </p>
         
         <button
-          onClick={() => performBackup(false)}
+          onClick={performBackup}
           disabled={loading}
-          className="flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-8 py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed mx-auto"
         >
           {loading ? (
             <>
@@ -241,88 +206,72 @@ function BackupSystem() {
             </>
           )}
         </button>
-      </div>
 
-      {/* Status do último backup */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <Clock size={24} className="text-blue-600" />
-            <h3 className="font-semibold text-gray-800">Último Backup</h3>
-          </div>
-          <p className="text-lg font-bold text-blue-600">
-            {lastBackup ? formatDate(lastBackup) : 'Nunca'}
-          </p>
-        </div>
-
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <Calendar size={24} className="text-green-600" />
-            <h3 className="font-semibold text-gray-800">Backup Automático</h3>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={autoBackupEnabled}
-              onChange={(e) => setAutoBackupEnabled(e.target.checked)}
-              className="w-5 h-5 text-green-600 rounded"
-            />
-            <span className="text-sm text-gray-600">
-              Ativado (diariamente às 18h)
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Histórico de backups */}
-      <div className="border-t pt-6">
-        <h3 className="text-lg font-bold text-gray-800 mb-4">Histórico de Backups</h3>
-        
-        {backupHistory.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <AlertCircle size={48} className="mx-auto mb-2 opacity-50" />
-            <p>Nenhum backup realizado ainda</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {backupHistory.map((backup) => (
-              <div
-                key={backup.id}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <CheckCircle size={20} className="text-green-600" />
-                  <div>
-                    <p className="font-medium text-gray-800">
-                      Backup {backup.tipo === 'automatico' ? 'Automático' : 'Manual'}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {backup.registros_count} registros • {formatDate(backup.created_at)}
-                    </p>
-                  </div>
-                </div>
-                
-                <span className="text-xs px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
-                  {backup.status}
-                </span>
-              </div>
-            ))}
+        {message && (
+          <div className={`mt-4 p-4 rounded-lg ${
+            message.includes('✅') 
+              ? 'bg-green-100 text-green-700 border border-green-300' 
+              : 'bg-red-100 text-red-700 border border-red-300'
+          }`}>
+            {message}
           </div>
         )}
       </div>
 
-      {/* Informações importantes */}
+      {/* Informações */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h4 className="font-semibold text-gray-800 mb-2">📊 Registros de Ponto</h4>
+          <p className="text-sm text-gray-600">
+            Todos os lançamentos de entrada/saída dos funcionários
+          </p>
+        </div>
+
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <h4 className="font-semibold text-gray-800 mb-2">⏰ Banco de Horas</h4>
+          <p className="text-sm text-gray-600">
+            Saldo de horas acumuladas de cada funcionário
+          </p>
+        </div>
+
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <h4 className="font-semibold text-gray-800 mb-2">👥 Funcionários</h4>
+          <p className="text-sm text-gray-600">
+            Cadastro completo de todos os funcionários
+          </p>
+        </div>
+      </div>
+
+      {/* Avisos importantes */}
       <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
         <div className="flex items-start gap-3">
-          <AlertCircle size={20} className="text-yellow-600 mt-0.5" />
+          <AlertCircle size={20} className="text-yellow-600 mt-0.5 flex-shrink-0" />
           <div className="text-sm text-gray-700">
-            <p className="font-semibold mb-1">⚠️ Importante:</p>
+            <p className="font-semibold mb-2">⚠️ Recomendações Importantes:</p>
             <ul className="list-disc list-inside space-y-1">
-              <li>Backups são salvos no seu computador em formato CSV</li>
+              <li>Faça backup regularmente (semanal ou quinzenal)</li>
               <li>Guarde os arquivos em local seguro (Google Drive, Dropbox, etc)</li>
-              <li>Backup automático acontece às 18h todos os dias</li>
-              <li>Recomendado fazer backup manual antes de mudanças importantes</li>
+              <li>Sempre faça backup antes de fazer mudanças importantes</li>
+              <li>Os arquivos CSV podem ser abertos no Excel ou Google Sheets</li>
+              <li>Mantenha pelo menos os últimos 3 meses de backups</li>
             </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Instruções */}
+      <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="flex items-start gap-3">
+          <div className="text-blue-600 font-bold text-xl flex-shrink-0">💡</div>
+          <div className="text-sm text-gray-700">
+            <p className="font-semibold mb-2">Como usar o backup:</p>
+            <ol className="list-decimal list-inside space-y-1">
+              <li>Clique no botão "Fazer Backup Agora"</li>
+              <li>Aguarde o download de 3 arquivos CSV</li>
+              <li>Salve os arquivos em uma pasta organizada (ex: "Backups_2025")</li>
+              <li>Envie os arquivos para sua nuvem preferida</li>
+              <li>Repita o processo regularmente</li>
+            </ol>
           </div>
         </div>
       </div>
