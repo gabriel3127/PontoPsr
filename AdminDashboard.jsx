@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Calendar, Clock, LogOut } from 'lucide-react'
+import { Calendar, Clock, LogOut, Database } from 'lucide-react'
 import Notifications from '../components/Notifications'
 import useNotifications from '../hooks/useNotifications'
 import { 
@@ -26,6 +26,7 @@ import {
   months 
 } from '../lib/utils'
 import { useAuth } from './AuthContext'
+import BackupSystem from './BackupSystem'
 
 // Adicionar estilos globais para impressão
 const printStyles = `
@@ -95,8 +96,6 @@ function AdminDashboard() {
     const [bancoTodosCategoria, setBancoTodosCategoria] = useState('todas') // todas, ou ID da categoria
     const [showTransferModal, setShowTransferModal] = useState(false)
     const [showNewEmployeeModal, setShowNewEmployeeModal] = useState(false)
-    const [showConfirmModal, setShowConfirmModal] = useState(false)
-    const [pendingUpdate, setPendingUpdate] = useState(null)
 
   useEffect(() => {
     loadInitialData()
@@ -131,12 +130,14 @@ function AdminDashboard() {
 // Adicione uma flag para evitar recarregar desnecessariamente
 const [isNavigating, setIsNavigating] = useState(false)
 
-useEffect(() => {
-  if (selectedFuncionario && view === 'timesheet' && !isNavigating) {
-    loadTimeRecords()
-  }
-  setIsNavigating(false)
-}, [selectedFuncionario, selectedMonth, selectedYear, view])
+  useEffect(() => {
+    if (selectedFuncionario && view === 'timesheet' && !isNavigating) {
+      // Limpar registros antes de carregar novos dados
+      setRecords({})
+      loadTimeRecords()
+    }
+    setIsNavigating(false)
+  }, [selectedFuncionario, selectedMonth, selectedYear, view])
 
 // Modifique a função loadTimeRecords para preservar dados não salvos
 const loadTimeRecords = async () => {
@@ -444,6 +445,18 @@ const updateRecord = async (dateKey, field, value) => {
               </button>
             </div>
             
+            <button 
+              onClick={() => setView('backup')}
+              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+                view === 'backup' 
+                  ? 'bg-purple-600 text-white shadow-lg' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              <Database size={20} />
+              Backup
+            </button>
+
             <div className="grid grid-cols-3 gap-3">
               {months.map((month, idx) => (
                 <button
@@ -680,11 +693,21 @@ const updateRecord = async (dateKey, field, value) => {
                 placeholder="Nome da Empresa"
             />
             <button
-                onClick={logout}
-                className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all ml-4"
+              onClick={async () => {
+                try {
+                  console.log('🔴 Fazendo logout...')
+                  await logout()
+                } catch (error) {
+                  console.error('Erro no logout:', error)
+                  // Forçar logout
+                  await supabase.auth.signOut()
+                  window.location.href = '/login'
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
             >
-                <LogOut size={20} />
-                Sair
+              <LogOut size={20} />
+              Sair
             </button>
         </div>
         </div>
@@ -860,6 +883,20 @@ const updateRecord = async (dateKey, field, value) => {
                             ? `${months[bancoMesFim.mes]}/${bancoMesFim.ano}`
                             : 'Mês Final'
                           }
+                        </button>
+
+                        <button
+                          onClick={() => setView('backup')}
+                          className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold ${
+                            view === 'backup' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700'
+                          }`}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                          </svg>
+                          Backup
                         </button>
                       </>
                     )}
@@ -1135,10 +1172,11 @@ const updateRecord = async (dateKey, field, value) => {
                             isNegativo ? 'text-red-600' : (saldoValue !== '-' ? 'text-blue-600' : 'text-gray-400')
                           }`}
                           onClick={() => {
-                            setSelectedFuncionario(bancoFuncionario)
-                            setSelectedCategoria(bancoCategoria)
+                            setSelectedFuncionario(funcionario.id)
+                            setSelectedCategoria(categoria.id)
                             setSelectedMonth(idx)
                             setSelectedYear(bancoYear)
+                            setBancoFilter('individual')
                             setView('timesheet')
                           }}
                         >
@@ -1311,6 +1349,10 @@ const updateRecord = async (dateKey, field, value) => {
           </div>
         )}
       </div>
+
+      {view === 'backup' && (
+        <BackupSystem />
+      )}
 
             {/* Modal Calendário */}
       {showCalendario && (
