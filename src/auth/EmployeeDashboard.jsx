@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from './AuthContext'
-import { LogOut, Clock, Coffee, Sunrise, Sunset, FileText } from 'lucide-react'
+import { LogOut, Clock, Coffee, Sunrise, Sunset, FileText, AlertCircle } from 'lucide-react'
 import Notifications from '../components/Notifications'
 import ConfirmationModal from '../components/ConfirmationModal'
 import useNotifications from '../hooks/useNotifications'
@@ -162,6 +162,42 @@ function EmployeeDashboard() {
     setPendingRecord(null)
   }
 
+  // ============================================================================
+  // FUNÇÃO: Verificar se um botão deve estar disponível
+  // ============================================================================
+  const isButtonAvailable = (tipo, todayRecord, isSaturday) => {
+    switch(tipo) {
+      case 'entrada':
+        return !todayRecord.entrada_manha
+      case 'saida_almoco':
+        return !isSaturday && !todayRecord.saida_almoco
+      case 'retorno_almoco':
+        return !isSaturday && !todayRecord.retorno_almoco
+      case 'saida':
+        return !todayRecord.saida_tarde
+      default:
+        return false
+    }
+  }
+
+  // ============================================================================
+  // FUNÇÃO: Verificar se há horários faltando (para alerta)
+  // ============================================================================
+  const getMissingRecords = (todayRecord, isSaturday) => {
+    const missing = []
+    
+    if (!todayRecord.entrada_manha) missing.push('Check-in')
+    
+    if (!isSaturday) {
+      if (!todayRecord.saida_almoco) missing.push('Saída Almoço')
+      if (!todayRecord.retorno_almoco) missing.push('Retorno Almoço')
+    }
+    
+    if (!todayRecord.saida_tarde) missing.push('Check-out')
+    
+    return missing
+  }
+
   const getTodayRecord = () => {
     const now = new Date()
     const dateKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`
@@ -173,6 +209,27 @@ function EmployeeDashboard() {
   const today = new Date()
   const isSaturday = today.getDay() === 6
   const isSunday = today.getDay() === 0
+  
+  // Verificar horários faltantes
+  const missingRecords = getMissingRecords(todayRecord, isSaturday)
+  const hasAllRecords = missingRecords.length === 0
+
+  // ============================================================================
+  // FORMATAÇÃO DE TEMPO PARA MOBILE
+  // ============================================================================
+  const formatFullTime = (date) => {
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+    const seconds = String(date.getSeconds()).padStart(2, '0')
+    return `${hours}:${minutes}:${seconds}`
+  }
+
+  const formatFullDate = (date) => {
+    const day = String(date.getDate()).padStart(2, '0')
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const year = date.getFullYear()
+    return `${day}/${month}/${year}`
+  }
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -183,134 +240,274 @@ function EmployeeDashboard() {
         isOpen={showConfirmation}
         onClose={cancelarRegistro}
         onConfirm={confirmarRegistro}
-        confirmationData={pendingRecord}
+        data={pendingRecord}
+        loading={loading}
       />
-      
-      <div className="bg-gradient-to-r from-purple-600 to-purple-800 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex justify-between items-center">
+
+      {/* ===== HEADER MOBILE-OPTIMIZED ===== */}
+      <div className="bg-gradient-to-r from-purple-600 to-purple-800 text-white shadow-lg">
+        <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-6">
+          {/* Desktop Layout */}
+          <div className="hidden sm:flex justify-between items-center flex-wrap gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-white">Olá, {user.funcionarioNome}!</h1>
-              <p className="text-purple-200 mt-1">Sistema de Controle de Ponto</p>
+              <h1 className="text-2xl md:text-3xl font-bold mb-1">Olá, {user.funcionarioNome}!</h1>
+              <p className="text-purple-200 text-sm md:text-base">
+                {currentTime.toLocaleDateString('pt-BR', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </p>
             </div>
-            <button
-              onClick={logout}
-              className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all"
-            >
-              <LogOut size={20} />
-              Sair
-            </button>
+            <div className="flex items-center gap-3">
+              <div className="text-center bg-white bg-opacity-20 px-4 py-2 rounded-lg">
+                <div className="text-2xl md:text-3xl font-bold">{formatFullTime(currentTime)}</div>
+                <div className="text-xs text-purple-200">{formatFullDate(currentTime)}</div>
+              </div>
+              <button
+                onClick={logout}
+                className="flex items-center gap-2 px-3 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg transition-all text-sm"
+              >
+                <LogOut size={18} />
+                <span className="hidden md:inline">Sair</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile Layout */}
+          <div className="sm:hidden space-y-3">
+            <div className="flex justify-between items-center">
+              <h1 className="text-xl font-bold">Olá, {user.funcionarioNome}!</h1>
+              <button
+                onClick={logout}
+                className="flex items-center gap-1 px-3 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg transition-all text-sm"
+              >
+                <LogOut size={16} />
+                Sair
+              </button>
+            </div>
+            
+            {/* Relógio Grande Mobile */}
+            <div className="bg-white bg-opacity-20 rounded-xl p-4 text-center">
+              <div className="text-4xl font-bold mb-1">{formatFullTime(currentTime)}</div>
+              <div className="text-sm text-purple-200">{formatFullDate(currentTime)}</div>
+              <div className="text-xs text-purple-300 mt-1">
+                {currentTime.toLocaleDateString('pt-BR', { weekday: 'long' })}
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         {view === 'home' && (
           <>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              <div className="bg-white rounded-lg shadow-md p-8 text-center">
-                <Clock size={48} className="mx-auto text-purple-600 mb-4" />
-                <div className="text-6xl font-bold text-gray-800 mb-2">
-                  {currentTime.toLocaleTimeString('pt-BR')}
-                </div>
-                <div className="text-xl text-gray-600">
-                  {currentTime.toLocaleDateString('pt-BR', { 
-                    weekday: 'long', 
-                    day: 'numeric', 
-                    month: 'long', 
-                    year: 'numeric' 
-                  })}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow-md p-8">
-                <h3 className="text-xl font-bold text-gray-800 mb-4">Registros de Hoje</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <span className="font-medium text-gray-700">Check-in:</span>
-                    <span className="text-xl font-bold text-purple-600">
-                      {todayRecord.entrada_manha || '--:--'}
-                    </span>
+            {/* ===== CARD DE REGISTROS - MOBILE FIRST ===== */}
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-3 sm:mb-4 flex items-center gap-2">
+                <FileText size={20} className="text-purple-600" />
+                Registros de Hoje
+              </h3>
+              
+              {/* Alertas */}
+              {!hasAllRecords && !isSunday && (
+                <div className="mb-4 p-3 sm:p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-lg">
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <AlertCircle className="text-yellow-600 flex-shrink-0 mt-0.5" size={18} />
+                    <div>
+                      <p className="font-semibold text-yellow-800 text-sm sm:text-base mb-1">
+                        Horários pendentes
+                      </p>
+                      <p className="text-xs sm:text-sm text-yellow-700">
+                        Faltam: {missingRecords.join(', ')}
+                      </p>
+                    </div>
                   </div>
-                  {!isSaturday && !isSunday && (
-                    <>
-                      <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                        <span className="font-medium text-gray-700">Saída Almoço:</span>
-                        <span className="text-xl font-bold text-purple-600">
-                          {todayRecord.saida_almoco || '--:--'}
-                        </span>
+                </div>
+              )}
+
+              {hasAllRecords && !isSunday && (
+                <div className="mb-4 p-3 sm:p-4 bg-green-50 border-l-4 border-green-400 rounded-lg">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="text-xl sm:text-2xl">✅</div>
+                    <div>
+                      <p className="font-semibold text-green-800 text-sm sm:text-base">
+                        Todos os horários registrados!
+                      </p>
+                      <p className="text-xs sm:text-sm text-green-700">
+                        Seu ponto de hoje está completo.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Grid de Horários - Mobile Optimized */}
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <span className="text-xs sm:text-sm font-medium text-gray-700">Check-in</span>
+                  <div className={`text-lg sm:text-xl font-bold mt-1 ${todayRecord.entrada_manha ? 'text-green-600' : 'text-gray-400'}`}>
+                    {todayRecord.entrada_manha || '--:--'}
+                  </div>
+                </div>
+                
+                {!isSaturday && (
+                  <>
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <span className="text-xs sm:text-sm font-medium text-gray-700">Saída Almoço</span>
+                      <div className={`text-lg sm:text-xl font-bold mt-1 ${todayRecord.saida_almoco ? 'text-orange-600' : 'text-gray-400'}`}>
+                        {todayRecord.saida_almoco || '--:--'}
                       </div>
-                      <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                        <span className="font-medium text-gray-700">Retorno Almoço:</span>
-                        <span className="text-xl font-bold text-purple-600">
-                          {todayRecord.retorno_almoco || '--:--'}
-                        </span>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <span className="text-xs sm:text-sm font-medium text-gray-700">Retorno</span>
+                      <div className={`text-lg sm:text-xl font-bold mt-1 ${todayRecord.retorno_almoco ? 'text-blue-600' : 'text-gray-400'}`}>
+                        {todayRecord.retorno_almoco || '--:--'}
                       </div>
-                    </>
-                  )}
-                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <span className="font-medium text-gray-700">Check-out:</span>
-                    <span className="text-xl font-bold text-purple-600">
-                      {todayRecord.saida_tarde || '--:--'}
-                    </span>
+                    </div>
+                  </>
+                )}
+                
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <span className="text-xs sm:text-sm font-medium text-gray-700">Check-out</span>
+                  <div className={`text-lg sm:text-xl font-bold mt-1 ${todayRecord.saida_tarde ? 'text-purple-600' : 'text-gray-400'}`}>
+                    {todayRecord.saida_tarde || '--:--'}
                   </div>
                 </div>
               </div>
             </div>
 
+            {/* ===== BOTÕES DE REGISTRO - MOBILE OPTIMIZED ===== */}
             {!isSunday && (
-              <div className="bg-white rounded-lg shadow-md p-8 mb-8">
-                <h3 className="text-2xl font-bold text-gray-800 mb-6 text-center">Registrar Ponto</h3>
-                <div className={`grid ${isSaturday ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'} gap-4`}>
+              <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-2 text-center">
+                  Registrar Ponto
+                </h3>
+                <p className="text-center text-gray-600 text-xs sm:text-sm mb-4 sm:mb-6">
+                  📌 Registre em <strong>qualquer ordem</strong>
+                </p>
+                
+                {/* Grid de Botões - Responsivo */}
+                <div className={`grid ${isSaturday ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'} gap-2 sm:gap-3`}>
+                  {/* CHECK-IN */}
                   <button
                     onClick={() => prepararRegistro('entrada')}
-                    disabled={loading || todayRecord.entrada_manha}
-                    className="flex flex-col items-center gap-3 p-6 bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-xl shadow-lg transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                    disabled={loading || !isButtonAvailable('entrada', todayRecord, isSaturday)}
+                    className={`
+                      flex flex-col items-center gap-2 p-4 sm:p-5 rounded-xl shadow-lg transition-all transform 
+                      ${isButtonAvailable('entrada', todayRecord, isSaturday)
+                        ? 'bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 active:scale-95'
+                        : 'bg-gray-300 cursor-not-allowed'
+                      }
+                      text-white disabled:opacity-50
+                    `}
                   >
-                    <Sunrise size={40} />
-                    <span className="font-bold text-lg">CHECK-IN</span>
+                    <Sunrise size={28} className="sm:w-10 sm:h-10" />
+                    <span className="font-bold text-sm sm:text-base">CHECK-IN</span>
+                    {todayRecord.entrada_manha && (
+                      <span className="text-xs bg-white bg-opacity-30 px-2 py-1 rounded">
+                        ✓ {todayRecord.entrada_manha}
+                      </span>
+                    )}
                   </button>
 
+                  {/* ALMOÇO & RETORNO - Só em dias de semana */}
                   {!isSaturday && (
                     <>
                       <button
                         onClick={() => prepararRegistro('saida_almoco')}
-                        disabled={loading || !todayRecord.entrada_manha || todayRecord.saida_almoco}
-                        className="flex flex-col items-center gap-3 p-6 bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl shadow-lg transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                        disabled={loading || !isButtonAvailable('saida_almoco', todayRecord, isSaturday)}
+                        className={`
+                          flex flex-col items-center gap-2 p-4 sm:p-5 rounded-xl shadow-lg transition-all transform 
+                          ${isButtonAvailable('saida_almoco', todayRecord, isSaturday)
+                            ? 'bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 active:scale-95'
+                            : 'bg-gray-300 cursor-not-allowed'
+                          }
+                          text-white disabled:opacity-50
+                        `}
                       >
-                        <Coffee size={40} />
-                        <span className="font-bold text-lg">ALMOÇO</span>
+                        <Coffee size={28} className="sm:w-10 sm:h-10" />
+                        <span className="font-bold text-sm sm:text-base">ALMOÇO</span>
+                        {todayRecord.saida_almoco && (
+                          <span className="text-xs bg-white bg-opacity-30 px-2 py-1 rounded">
+                            ✓ {todayRecord.saida_almoco}
+                          </span>
+                        )}
                       </button>
 
                       <button
                         onClick={() => prepararRegistro('retorno_almoco')}
-                        disabled={loading || !todayRecord.saida_almoco || todayRecord.retorno_almoco}
-                        className="flex flex-col items-center gap-3 p-6 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl shadow-lg transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                        disabled={loading || !isButtonAvailable('retorno_almoco', todayRecord, isSaturday)}
+                        className={`
+                          flex flex-col items-center gap-2 p-4 sm:p-5 rounded-xl shadow-lg transition-all transform 
+                          ${isButtonAvailable('retorno_almoco', todayRecord, isSaturday)
+                            ? 'bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 active:scale-95'
+                            : 'bg-gray-300 cursor-not-allowed'
+                          }
+                          text-white disabled:opacity-50
+                        `}
                       >
-                        <Coffee size={40} />
-                        <span className="font-bold text-lg">RETORNO</span>
+                        <Coffee size={28} className="sm:w-10 sm:h-10" />
+                        <span className="font-bold text-sm sm:text-base">RETORNO</span>
+                        {todayRecord.retorno_almoco && (
+                          <span className="text-xs bg-white bg-opacity-30 px-2 py-1 rounded">
+                            ✓ {todayRecord.retorno_almoco}
+                          </span>
+                        )}
                       </button>
                     </>
                   )}
 
+                  {/* CHECK-OUT */}
                   <button
                     onClick={() => prepararRegistro('saida')}
-                    disabled={loading || (isSaturday ? !todayRecord.entrada_manha : !todayRecord.retorno_almoco) || todayRecord.saida_tarde}
-                    className="flex flex-col items-center gap-3 p-6 bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl shadow-lg transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                    disabled={loading || !isButtonAvailable('saida', todayRecord, isSaturday)}
+                    className={`
+                      flex flex-col items-center gap-2 p-4 sm:p-5 rounded-xl shadow-lg transition-all transform 
+                      ${isButtonAvailable('saida', todayRecord, isSaturday)
+                        ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 active:scale-95'
+                        : 'bg-gray-300 cursor-not-allowed'
+                      }
+                      text-white disabled:opacity-50
+                    `}
                   >
-                    <Sunset size={40} />
-                    <span className="font-bold text-lg">CHECK-OUT</span>
+                    <Sunset size={28} className="sm:w-10 sm:h-10" />
+                    <span className="font-bold text-sm sm:text-base">CHECK-OUT</span>
+                    {todayRecord.saida_tarde && (
+                      <span className="text-xs bg-white bg-opacity-30 px-2 py-1 rounded">
+                        ✓ {todayRecord.saida_tarde}
+                      </span>
+                    )}
                   </button>
+                </div>
+
+                {/* Instruções - Mobile Friendly */}
+                <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-blue-50 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <div className="text-blue-600 text-lg sm:text-xl">ℹ️</div>
+                    <div className="text-xs sm:text-sm text-blue-800">
+                      <p className="font-semibold mb-1">Como funciona:</p>
+                      <ul className="list-disc list-inside space-y-1 text-blue-700">
+                        <li>Registre na ordem Correta</li>
+                        <li><strong>Coloridos</strong> = disponíveis</li>
+                        <li><strong>Cinzas</strong> = já registrados</li>
+                        <li>Após confirmar, o horário não pode mais ser alterado</li>
+                        <li>Se esquecer um horário, pode registrar os outros normalmente</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
 
+            {/* Botão Ver Registros - Mobile Friendly */}
             <div className="text-center">
               <button
                 onClick={() => setView('registros')}
-                className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white font-bold text-lg rounded-xl shadow-lg transition-all transform hover:scale-105"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 sm:gap-3 px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white font-bold text-base sm:text-lg rounded-xl shadow-lg transition-all transform active:scale-95"
               >
-                <FileText size={24} />
+                <FileText size={20} className="sm:w-6 sm:h-6" />
                 VER MEUS REGISTROS
               </button>
             </div>
@@ -320,10 +517,10 @@ function EmployeeDashboard() {
         {view === 'registros' && (
           <>
             {selectedMonth === new Date().getMonth() && selectedYear === new Date().getFullYear() && (
-              <div className="mb-6">
+              <div className="mb-4 sm:mb-6">
                 <button
                   onClick={() => setView('home')}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition-all"
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition-all text-sm sm:text-base"
                 >
                   ← Voltar
                 </button>
@@ -331,14 +528,14 @@ function EmployeeDashboard() {
             )}
 
             <div className="bg-white rounded-lg shadow-md overflow-hidden">
-              <div className="p-6 bg-purple-600">
-                <div className="flex justify-between items-center flex-wrap gap-4">
-                  <h3 className="text-2xl font-bold text-white">Meus Registros</h3>
-                  <div className="flex gap-2">
+              <div className="p-4 sm:p-6 bg-purple-600">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+                  <h3 className="text-xl sm:text-2xl font-bold text-white">Meus Registros</h3>
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                     <select
                       value={selectedMonth}
                       onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                      className="px-3 py-2 border border-purple-400 bg-white rounded-lg focus:ring-2 focus:ring-purple-300 outline-none"
+                      className="px-3 py-2 border border-purple-400 bg-white rounded-lg focus:ring-2 focus:ring-purple-300 outline-none text-sm sm:text-base"
                     >
                       {months.map((month, idx) => (
                         <option key={idx} value={idx}>{month}</option>
@@ -349,25 +546,24 @@ function EmployeeDashboard() {
                       type="number"
                       value={selectedYear}
                       onChange={(e) => setSelectedYear(Number(e.target.value))}
-                      className="px-3 py-2 border border-purple-400 bg-white rounded-lg w-24 focus:ring-2 focus:ring-purple-300 outline-none"
+                      className="px-3 py-2 border border-purple-400 bg-white rounded-lg w-full sm:w-24 focus:ring-2 focus:ring-purple-300 outline-none text-sm sm:text-base"
                     />
                   </div>
                 </div>
               </div>
 
+              {/* Tabela Responsiva */}
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-xs sm:text-sm">
                   <thead>
                     <tr className="bg-purple-100 text-purple-800">
-                      <th className="border border-purple-200 p-3">Data</th>
-                      <th className="border border-purple-200 p-3">Dia</th>
-                      <th className="border border-purple-200 p-3">Entrada</th>
-                      <th className="border border-purple-200 p-3">Saída</th>
-                      <th className="border border-purple-200 p-3">Entrada</th>
-                      <th className="border border-purple-200 p-3">Saída</th>
-                      <th className="border border-purple-200 p-3">H. Diária</th>
-                      <th className="border border-purple-200 p-3">Atrasos</th>
-                      <th className="border border-purple-200 p-3">Extras</th>
+                      <th className="border border-purple-200 p-2 sm:p-3">Data</th>
+                      <th className="border border-purple-200 p-2 sm:p-3">Dia</th>
+                      <th className="border border-purple-200 p-2 sm:p-3">Entrada</th>
+                      <th className="border border-purple-200 p-2 sm:p-3">Saída</th>
+                      <th className="border border-purple-200 p-2 sm:p-3 hidden sm:table-cell">Entrada</th>
+                      <th className="border border-purple-200 p-2 sm:p-3 hidden sm:table-cell">Saída</th>
+                      <th className="border border-purple-200 p-2 sm:p-3">H. Diária</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -388,30 +584,24 @@ function EmployeeDashboard() {
                             ${!shortLunch && !day.isSunday ? 'hover:bg-purple-50' : ''}
                           `}
                         >
-                          <td className="border border-gray-200 p-2 text-center font-medium">
+                          <td className="border border-gray-200 p-2 text-center font-medium text-xs sm:text-sm">
                             {String(day.day).padStart(2, '0')}/{String(selectedMonth + 1).padStart(2, '0')}
                           </td>
-                          <td className="border border-gray-200 p-2 text-center">{day.weekDay}</td>
-                          <td className="border border-gray-200 p-2 text-center font-medium">
+                          <td className="border border-gray-200 p-2 text-center text-xs sm:text-sm">{day.weekDay}</td>
+                          <td className="border border-gray-200 p-2 text-center font-medium text-xs sm:text-sm">
                             {record.entrada_manha || '--:--'}
                           </td>
-                          <td className="border border-gray-200 p-2 text-center font-medium">
+                          <td className="border border-gray-200 p-2 text-center font-medium text-xs sm:text-sm">
                             {record.saida_almoco || '--:--'}
                           </td>
-                          <td className="border border-gray-200 p-2 text-center font-medium">
+                          <td className="border border-gray-200 p-2 text-center font-medium text-xs sm:text-sm hidden sm:table-cell">
                             {record.retorno_almoco || '--:--'}
                           </td>
-                          <td className="border border-gray-200 p-2 text-center font-medium">
+                          <td className="border border-gray-200 p-2 text-center font-medium text-xs sm:text-sm hidden sm:table-cell">
                             {record.saida_tarde || '--:--'}
                           </td>
-                          <td className="border border-gray-200 p-2 text-center bg-gray-50 font-semibold">
+                          <td className="border border-gray-200 p-2 text-center bg-gray-50 font-semibold text-xs sm:text-sm">
                             {minutesToTime(worked)}
-                          </td>
-                          <td className="border border-gray-200 p-2 text-center text-red-600 font-semibold">
-                            {delay > 0 ? minutesToTime(delay) : '-'}
-                          </td>
-                          <td className="border border-gray-200 p-2 text-center text-green-600 font-semibold">
-                            {(overtime.faixa1 + overtime.faixa2) > 0 ? minutesToTime(overtime.faixa1 + overtime.faixa2) : '-'}
                           </td>
                         </tr>
                       )
