@@ -1,8 +1,17 @@
 import React from 'react'
 import { Clock, Calendar, User, X, Check, AlertTriangle } from 'lucide-react'
 
-function ConfirmationModal({ isOpen, onClose, onConfirm, confirmationData }) {
+function ConfirmationModal({ isOpen, onClose, onConfirm, data, loading, confirmationData }) {
+  // ============================================================================
+  // PROTEÇÃO: Aceita tanto 'data' quanto 'confirmationData' para compatibilidade
+  // ============================================================================
   if (!isOpen) return null
+  
+  // Usa confirmationData se existir, senão usa data
+  const modalData = confirmationData || data
+  
+  // Se não tem nenhum dos dois, não renderiza
+  if (!modalData) return null
 
   const getTipoColor = (tipo) => {
     const colors = {
@@ -48,7 +57,8 @@ function ConfirmationModal({ isOpen, onClose, onConfirm, confirmationData }) {
             </div>
             <button
               onClick={onClose}
-              className="text-white hover:bg-white hover:bg-opacity-20 p-2 rounded-full transition-colors"
+              disabled={loading}
+              className="text-white hover:bg-white hover:bg-opacity-20 p-2 rounded-full transition-colors disabled:opacity-50"
             >
               <X className="w-5 h-5" />
             </button>
@@ -78,7 +88,7 @@ function ConfirmationModal({ isOpen, onClose, onConfirm, confirmationData }) {
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-500 font-medium">Funcionário</p>
                 <p className="text-sm font-bold text-gray-800 truncate">
-                  {confirmationData.funcionarioNome}
+                  {modalData.funcionarioNome || 'Funcionário'}
                 </p>
               </div>
             </div>
@@ -89,7 +99,8 @@ function ConfirmationModal({ isOpen, onClose, onConfirm, confirmationData }) {
               <div className="flex-1">
                 <p className="text-xs text-gray-500 font-medium">Data</p>
                 <p className="text-sm font-bold text-gray-800">
-                  {confirmationData.diaSemana}, {confirmationData.dataFormatada}
+                  {modalData.diaSemana && `${modalData.diaSemana}, `}
+                  {modalData.dataFormatada || new Date().toLocaleDateString('pt-BR')}
                 </p>
               </div>
             </div>
@@ -102,12 +113,12 @@ function ConfirmationModal({ isOpen, onClose, onConfirm, confirmationData }) {
                   <div>
                     <p className="text-xs text-purple-600 font-medium">Horário</p>
                     <p className="text-3xl font-bold text-purple-900">
-                      {confirmationData.hora}
+                      {modalData.hora || '--:--'}
                     </p>
                   </div>
                 </div>
                 <div className="text-4xl">
-                  {getTipoIcon(confirmationData.tipo)}
+                  {getTipoIcon(modalData.tipo)}
                 </div>
               </div>
             </div>
@@ -115,8 +126,8 @@ function ConfirmationModal({ isOpen, onClose, onConfirm, confirmationData }) {
             {/* Tipo de Registro */}
             <div className="p-3 bg-gray-50 rounded-lg">
               <p className="text-xs text-gray-500 font-medium mb-2">Tipo de Registro</p>
-              <div className={`inline-block px-4 py-2 rounded-full font-bold border-2 ${getTipoColor(confirmationData.tipo)}`}>
-                {getTipoLabel(confirmationData.tipo)}
+              <div className={`inline-block px-4 py-2 rounded-full font-bold border-2 ${getTipoColor(modalData.tipo)}`}>
+                {getTipoLabel(modalData.tipo)}
               </div>
             </div>
           </div>
@@ -126,17 +137,31 @@ function ConfirmationModal({ isOpen, onClose, onConfirm, confirmationData }) {
         <div className="bg-gray-50 px-6 py-4 rounded-b-lg flex space-x-3">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-lg font-bold hover:bg-gray-100 transition-colors flex items-center justify-center space-x-2"
+            disabled={loading}
+            className="flex-1 px-4 py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-lg font-bold hover:bg-gray-100 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X className="w-5 h-5" />
             <span>Cancelar</span>
           </button>
           <button
             onClick={onConfirm}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-bold hover:from-green-700 hover:to-green-800 transition-colors flex items-center justify-center space-x-2 shadow-lg"
+            disabled={loading}
+            className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-bold hover:from-green-700 hover:to-green-800 transition-colors flex items-center justify-center space-x-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Check className="w-5 h-5" />
-            <span>Confirmar</span>
+            {loading ? (
+              <>
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <span>Salvando...</span>
+              </>
+            ) : (
+              <>
+                <Check className="w-5 h-5" />
+                <span>Confirmar</span>
+              </>
+            )}
           </button>
         </div>
       </div>
