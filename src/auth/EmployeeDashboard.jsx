@@ -489,11 +489,9 @@ function EmployeeDashboard() {
                     <div className="text-xs sm:text-sm text-blue-800">
                       <p className="font-semibold mb-1">Como funciona:</p>
                       <ul className="list-disc list-inside space-y-1 text-blue-700">
-                        <li>Registre na ordem Correta</li>
+                        <li>Registre na ordem que preferir</li>
                         <li><strong>Coloridos</strong> = disponíveis</li>
                         <li><strong>Cinzas</strong> = já registrados</li>
-                        <li>Após confirmar, o horário não pode mais ser alterado</li>
-                        <li>Se esquecer um horário, pode registrar os outros normalmente</li>
                       </ul>
                     </div>
                   </div>
@@ -552,7 +550,7 @@ function EmployeeDashboard() {
                 </div>
               </div>
 
-              {/* Tabela Responsiva */}
+              {/* Tabela Responsiva - Com Atrasos e Horas Extras */}
               <div className="overflow-x-auto">
                 <table className="w-full text-xs sm:text-sm">
                   <thead>
@@ -564,6 +562,8 @@ function EmployeeDashboard() {
                       <th className="border border-purple-200 p-2 sm:p-3 hidden sm:table-cell">Entrada</th>
                       <th className="border border-purple-200 p-2 sm:p-3 hidden sm:table-cell">Saída</th>
                       <th className="border border-purple-200 p-2 sm:p-3">H. Diária</th>
+                      <th className="border border-purple-200 p-2 sm:p-3 text-red-700">Atrasos</th>
+                      <th className="border border-purple-200 p-2 sm:p-3 text-green-700">H. Extras</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -573,6 +573,7 @@ function EmployeeDashboard() {
                       const expected = getExpectedWorkHours(day.isSaturday, day.isSunday, record.tipo)
                       const delay = calculateDelay(worked, expected)
                       const overtime = calculateOvertime(worked)
+                      const totalOvertime = (overtime.faixa1 || 0) + (overtime.faixa2 || 0)
                       const shortLunch = hasShortLunch(record)
                       
                       return (
@@ -584,30 +585,115 @@ function EmployeeDashboard() {
                             ${!shortLunch && !day.isSunday ? 'hover:bg-purple-50' : ''}
                           `}
                         >
+                          {/* Data */}
                           <td className="border border-gray-200 p-2 text-center font-medium text-xs sm:text-sm">
                             {String(day.day).padStart(2, '0')}/{String(selectedMonth + 1).padStart(2, '0')}
                           </td>
-                          <td className="border border-gray-200 p-2 text-center text-xs sm:text-sm">{day.weekDay}</td>
+                          
+                          {/* Dia da Semana */}
+                          <td className="border border-gray-200 p-2 text-center text-xs sm:text-sm">
+                            {day.weekDay}
+                          </td>
+                          
+                          {/* Entrada Manhã */}
                           <td className="border border-gray-200 p-2 text-center font-medium text-xs sm:text-sm">
                             {record.entrada_manha || '--:--'}
                           </td>
+                          
+                          {/* Saída Almoço */}
                           <td className="border border-gray-200 p-2 text-center font-medium text-xs sm:text-sm">
                             {record.saida_almoco || '--:--'}
                           </td>
+                          
+                          {/* Retorno Almoço (hidden em mobile) */}
                           <td className="border border-gray-200 p-2 text-center font-medium text-xs sm:text-sm hidden sm:table-cell">
                             {record.retorno_almoco || '--:--'}
                           </td>
+                          
+                          {/* Saída Tarde (hidden em mobile) */}
                           <td className="border border-gray-200 p-2 text-center font-medium text-xs sm:text-sm hidden sm:table-cell">
                             {record.saida_tarde || '--:--'}
                           </td>
+                          
+                          {/* Horas Trabalhadas */}
                           <td className="border border-gray-200 p-2 text-center bg-gray-50 font-semibold text-xs sm:text-sm">
                             {minutesToTime(worked)}
+                          </td>
+                          
+                          {/* Atrasos */}
+                          <td className={`border border-gray-200 p-2 text-center font-semibold text-xs sm:text-sm ${
+                            delay > 0 ? 'text-red-600 bg-red-50' : 'text-gray-400'
+                          }`}>
+                            {delay > 0 ? minutesToTime(delay) : '-'}
+                          </td>
+                          
+                          {/* Horas Extras */}
+                          <td className={`border border-gray-200 p-2 text-center font-semibold text-xs sm:text-sm ${
+                            totalOvertime > 0 ? 'text-green-600 bg-green-50' : 'text-gray-400'
+                          }`}>
+                            {totalOvertime > 0 ? minutesToTime(totalOvertime) : '-'}
                           </td>
                         </tr>
                       )
                     })}
                   </tbody>
+                  
+                  {/* Totais do Mês (Rodapé) */}
+                  <tfoot>
+                    <tr className="bg-purple-600 text-white font-bold">
+                      <td colSpan="2" className="border border-purple-700 p-2 sm:p-3 text-center text-xs sm:text-sm">
+                        TOTAL DO MÊS
+                      </td>
+                      <td colSpan="4" className="border border-purple-700 p-2 sm:p-3 text-center hidden sm:table-cell">
+                        {/* Espaço vazio */}
+                      </td>
+                      <td className="border border-purple-700 p-2 sm:p-3 text-center text-xs sm:text-sm">
+                        {minutesToTime(
+                          days.reduce((total, day) => {
+                            const record = records[day.dateKey] || {}
+                            return total + calculateWorkedHours(record)
+                          }, 0)
+                        )}
+                      </td>
+                      <td className="border border-purple-700 p-2 sm:p-3 text-center text-xs sm:text-sm hidden md:table-cell">
+                        {(() => {
+                          const totalDelay = days.reduce((total, day) => {
+                            const record = records[day.dateKey] || {}
+                            const worked = calculateWorkedHours(record)
+                            const expected = getExpectedWorkHours(day.isSaturday, day.isSunday, record.tipo)
+                            return total + calculateDelay(worked, expected)
+                          }, 0)
+                          return totalDelay > 0 ? (
+                            <span className="text-red-200">-{minutesToTime(totalDelay)}</span>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )
+                        })()}
+                      </td>
+                      <td className="border border-purple-700 p-2 sm:p-3 text-center text-xs sm:text-sm hidden md:table-cell">
+                        {(() => {
+                          const totalOT = days.reduce((total, day) => {
+                            const record = records[day.dateKey] || {}
+                            const overtime = calculateOvertime(calculateWorkedHours(record))
+                            return total + (overtime.faixa1 || 0) + (overtime.faixa2 || 0)
+                          }, 0)
+                          return totalOT > 0 ? (
+                            <span className="text-green-200">+{minutesToTime(totalOT)}</span>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )
+                        })()}
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
+                
+                {/* Legenda Mobile - Mostra info que está escondida */}
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg md:hidden">
+                  <p className="text-xs text-gray-600 font-medium mb-2">
+                    💡 <strong>Dica:</strong> Gire o celular para ver mais detalhes ou acesse no computador para ver atrasos e horas extras.
+                  </p>
+                </div>
               </div>
             </div>
           </>
