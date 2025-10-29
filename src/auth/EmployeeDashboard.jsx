@@ -489,9 +489,11 @@ function EmployeeDashboard() {
                     <div className="text-xs sm:text-sm text-blue-800">
                       <p className="font-semibold mb-1">Como funciona:</p>
                       <ul className="list-disc list-inside space-y-1 text-blue-700">
-                        <li>Registre na ordem que preferir</li>
+                        <li>Registre seus horarios corretamente:</li>
                         <li><strong>Coloridos</strong> = disponíveis</li>
                         <li><strong>Cinzas</strong> = já registrados</li>
+                        <li>Após confirmar, o horário não pode mais ser alterado</li>
+                        <li>Se esquecer um horário, pode registrar os outros normalmente</li>
                       </ul>
                     </div>
                   </div>
@@ -639,13 +641,13 @@ function EmployeeDashboard() {
                   </tbody>
                   
                   {/* Totais do Mês (Rodapé) */}
+                  {/*
                   <tfoot>
                     <tr className="bg-purple-600 text-white font-bold">
                       <td colSpan="2" className="border border-purple-700 p-2 sm:p-3 text-center text-xs sm:text-sm">
                         TOTAL DO MÊS
                       </td>
                       <td colSpan="4" className="border border-purple-700 p-2 sm:p-3 text-center hidden sm:table-cell">
-                        {/* Espaço vazio */}
                       </td>
                       <td className="border border-purple-700 p-2 sm:p-3 text-center text-xs sm:text-sm">
                         {minutesToTime(
@@ -685,7 +687,7 @@ function EmployeeDashboard() {
                         })()}
                       </td>
                     </tr>
-                  </tfoot>
+                  </tfoot> */}
                 </table>
                 
                 {/* Legenda Mobile - Mostra info que está escondida */}
