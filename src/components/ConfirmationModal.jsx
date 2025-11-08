@@ -1,16 +1,50 @@
-import React from 'react'
-import { Clock, Calendar, User, X, Check, AlertTriangle } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Clock, Calendar, User, X, Check, AlertTriangle, WifiOff } from 'lucide-react'
 
 function ConfirmationModal({ isOpen, onClose, onConfirm, data, loading, confirmationData }) {
   // ============================================================================
-  // PROTEÇÃO: Aceita tanto 'data' quanto 'confirmationData' para compatibilidade
+  // NOVA FUNCIONALIDADE: Verificação de conexão
+  // ============================================================================
+  const [canConfirm, setCanConfirm] = useState(true)
+  const [checkingConnection, setCheckingConnection] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const checkSystemHealth = () => {
+      const healthStatus = window.systemHealthStatus
+
+      if (!healthStatus) {
+        setCanConfirm(true)
+        setCheckingConnection(false)
+        return
+      }
+
+      if (healthStatus.isChecking) {
+        setCanConfirm(false)
+        setCheckingConnection(true)
+      } else if (!healthStatus.isHealthy) {
+        setCanConfirm(false)
+        setCheckingConnection(false)
+      } else {
+        setCanConfirm(true)
+        setCheckingConnection(false)
+      }
+    }
+
+    checkSystemHealth()
+    const interval = setInterval(checkSystemHealth, 500)
+
+    return () => clearInterval(interval)
+  }, [isOpen])
+
+  // ============================================================================
+  // CÓDIGO ORIGINAL: Proteção de dados
   // ============================================================================
   if (!isOpen) return null
   
-  // Usa confirmationData se existir, senão usa data
   const modalData = confirmationData || data
   
-  // Se não tem nenhum dos dois, não renderiza
   if (!modalData) return null
 
   const getTipoColor = (tipo) => {
@@ -44,7 +78,7 @@ function ConfirmationModal({ isOpen, onClose, onConfirm, data, loading, confirma
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 animate-fadeIn" style={{ zIndex: 9999 }}>
       <div className="bg-white rounded-lg shadow-2xl max-w-md w-full animate-scaleIn">
         {/* Header */}
         <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6 rounded-t-lg">
@@ -67,18 +101,52 @@ function ConfirmationModal({ isOpen, onClose, onConfirm, data, loading, confirma
 
         {/* Body */}
         <div className="p-6 space-y-4">
-          {/* Alerta */}
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded flex items-start space-x-3">
-            <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm text-yellow-800 font-medium">
-                Verifique os dados antes de confirmar
-              </p>
-              <p className="text-xs text-yellow-700 mt-1">
-                Este registro será salvo permanentemente
-              </p>
+          {/* NOVO: Alerta de verificando conexão */}
+          {checkingConnection && (
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded flex items-start space-x-3">
+              <div className="animate-spin">
+                <Clock className="w-5 h-5 text-yellow-600" />
+              </div>
+              <div>
+                <p className="text-sm text-yellow-800 font-medium">
+                  Verificando conexão...
+                </p>
+                <p className="text-xs text-yellow-700 mt-1">
+                  Aguarde enquanto verificamos a conexão com o servidor
+                </p>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* NOVO: Alerta de sem conexão */}
+          {!canConfirm && !checkingConnection && (
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded flex items-start space-x-3">
+              <WifiOff className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm text-red-800 font-medium">
+                  Sem conexão com o servidor
+                </p>
+                <p className="text-xs text-red-700 mt-1">
+                  Aguarde a conexão ser restabelecida para confirmar o registro
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Alerta original */}
+          {canConfirm && !checkingConnection && (
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded flex items-start space-x-3">
+              <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm text-yellow-800 font-medium">
+                  Verifique os dados antes de confirmar
+                </p>
+                <p className="text-xs text-yellow-700 mt-1">
+                  Este registro será salvo permanentemente
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Dados do Registro */}
           <div className="space-y-3">
@@ -145,8 +213,12 @@ function ConfirmationModal({ isOpen, onClose, onConfirm, data, loading, confirma
           </button>
           <button
             onClick={onConfirm}
-            disabled={loading}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-bold hover:from-green-700 hover:to-green-800 transition-colors flex items-center justify-center space-x-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={loading || !canConfirm}
+            className={`flex-1 px-4 py-3 rounded-lg font-bold transition-colors flex items-center justify-center space-x-2 shadow-lg ${
+              loading || !canConfirm
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800'
+            }`}
           >
             {loading ? (
               <>
@@ -156,6 +228,19 @@ function ConfirmationModal({ isOpen, onClose, onConfirm, data, loading, confirma
                 </svg>
                 <span>Salvando...</span>
               </>
+            ) : checkingConnection ? (
+              <>
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <span>Verificando...</span>
+              </>
+            ) : !canConfirm ? (
+              <>
+                <WifiOff className="w-5 h-5" />
+                <span>Sem Conexão</span>
+              </>
             ) : (
               <>
                 <Check className="w-5 h-5" />
@@ -164,6 +249,15 @@ function ConfirmationModal({ isOpen, onClose, onConfirm, data, loading, confirma
             )}
           </button>
         </div>
+
+        {/* NOVO: Info adicional quando sem conexão */}
+        {!canConfirm && !checkingConnection && (
+          <div className="px-6 pb-4">
+            <p className="text-xs text-center text-gray-500">
+              ⚠️ Aguarde a conexão com o servidor ser restabelecida
+            </p>
+          </div>
+        )}
       </div>
 
       <style>{`
