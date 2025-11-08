@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef } from 'react'
 import { AlertTriangle, Wifi, WifiOff, RefreshCw, Activity } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../auth/AuthContext'
+import { useLocation } from 'react-router-dom'
 
 function SystemHealthMonitor() {
   const { user } = useAuth()
+  const location = useLocation()
   const [status, setStatus] = useState({
     internet: true,
     session: true,
@@ -18,10 +20,18 @@ function SystemHealthMonitor() {
   const checkingTimeoutRef = useRef(null)
 
   // ============================================================================
-  // EXPORTAR STATUS PARA OUTROS COMPONENTES
+  // VERIFICAR SE ESTÁ NA PÁGINA DE LOGIN
+  // ============================================================================
+  const isLoginPage = () => {
+    return location.pathname === '/login' || 
+           location.pathname === '/reset-password' || 
+           location.pathname === '/'
+  }
+
+  // ============================================================================
+  // EXPORTAR STATUS
   // ============================================================================
   useEffect(() => {
-    // Disponibilizar status globalmente
     window.systemHealthStatus = {
       isHealthy: !showAlert && status.internet && status.session && status.api,
       isChecking: isChecking,
@@ -43,8 +53,7 @@ function SystemHealthMonitor() {
     clearCheckingTimeout()
     
     checkingTimeoutRef.current = setTimeout(() => {
-      console.error('[MONITOR] ⏰ TIMEOUT! +5 segundos')
-      console.error('[MONITOR] 🚨 FORÇANDO ALERTA')
+      console.error('[MONITOR] ⏰ TIMEOUT! +5s')
       
       setIsChecking(false)
       setStatus({
@@ -57,7 +66,7 @@ function SystemHealthMonitor() {
         '⚠️ TIMEOUT DETECTADO:\n\n' +
         '❌ Sistema demorou mais de 5 segundos\n' +
         '❌ Possível problema de conexão\n\n' +
-        '💡 Clique em "Recarregar" para resolver'
+        '💡 Clique em "Recarregar"'
       )
       setShowAlert(true)
     }, 5000)
@@ -96,6 +105,12 @@ function SystemHealthMonitor() {
   const checkSupabaseSession = async () => {
     console.log('[MONITOR] 🔐 Sessão...')
     
+    // Se está no login, não verificar sessão
+    if (isLoginPage() || !user) {
+      console.log('[MONITOR] ⏭️ Pulando (página de login)')
+      return true // Retorna true para não alertar
+    }
+    
     try {
       const promise = supabase.auth.getSession()
       const timeoutPromise = new Promise((_, reject) => 
@@ -128,6 +143,12 @@ function SystemHealthMonitor() {
   const checkAPIResponse = async () => {
     console.log('[MONITOR] 🔌 API...')
     
+    // Se está no login, não verificar API
+    if (isLoginPage() || !user) {
+      console.log('[MONITOR] ⏭️ Pulando (página de login)')
+      return true // Retorna true para não alertar
+    }
+    
     try {
       const apiPromise = supabase.from('funcionarios').select('id').limit(1)
       const timeoutPromise = new Promise((_, reject) => 
@@ -150,6 +171,14 @@ function SystemHealthMonitor() {
   }
 
   const performHealthCheck = async (reason = 'manual') => {
+    // NÃO verificar se está no login
+    if (isLoginPage()) {
+      console.log('[MONITOR] ⏭️ Não verifica (página de login)')
+      setIsChecking(false)
+      setShowAlert(false)
+      return true
+    }
+
     console.log(`\n====== CHECK #${checkCount + 1} (${reason}) ======`)
     
     setIsChecking(true)
@@ -194,7 +223,7 @@ function SystemHealthMonitor() {
         if (!sessionOK) message += '❌ Sua sessão expirou\n'
         if (!apiOK) message += '❌ Servidor não responde\n'
         
-        message += '\n💡 Aguarde a conexão voltar ou clique em "Recarregar"'
+        message += '\n💡 Aguarde ou clique em "Recarregar"'
         
         setAlertMessage(message)
         setShowAlert(true)
@@ -218,7 +247,7 @@ function SystemHealthMonitor() {
       })
       setAlertMessage(
         '⚠️ ERRO NA VERIFICAÇÃO:\n\n' +
-        '❌ Ocorreu um erro ao verificar o sistema\n\n' +
+        '❌ Erro ao verificar sistema\n\n' +
         '💡 Clique em "Recarregar"'
       )
       setShowAlert(true)
@@ -230,33 +259,42 @@ function SystemHealthMonitor() {
   // LISTENERS
   // ============================================================================
   useEffect(() => {
-    console.log('[MONITOR] 🚀 Inicializando...')
-    performHealthCheck('inicialização')
+    // Só inicializar se NÃO estiver no login
+    if (!isLoginPage() && user) {
+      console.log('[MONITOR] 🚀 Inicializando...')
+      performHealthCheck('inicialização')
+    }
 
     const handleFocus = () => {
-      console.log('[MONITOR] 👀 FOCO!')
-      performHealthCheck('focus')
+      if (!isLoginPage() && user) {
+        console.log('[MONITOR] 👀 FOCO!')
+        performHealthCheck('focus')
+      }
     }
 
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && !isLoginPage() && user) {
         console.log('[MONITOR] 👁️ VISÍVEL!')
         performHealthCheck('visible')
       }
     }
 
     const handleOnline = () => {
-      console.log('[MONITOR] 🌐 INTERNET VOLTOU!')
-      performHealthCheck('online')
+      if (!isLoginPage() && user) {
+        console.log('[MONITOR] 🌐 INTERNET VOLTOU!')
+        performHealthCheck('online')
+      }
     }
 
     const handleOffline = () => {
-      console.log('[MONITOR] 📡 INTERNET CAIU!')
-      clearCheckingTimeout()
-      setIsChecking(false)
-      setStatus(prev => ({ ...prev, internet: false }))
-      setAlertMessage('❌ Sem internet\n\n💡 Aguarde reconectar ou recarregue')
-      setShowAlert(true)
+      if (!isLoginPage() && user) {
+        console.log('[MONITOR] 📡 INTERNET CAIU!')
+        clearCheckingTimeout()
+        setIsChecking(false)
+        setStatus(prev => ({ ...prev, internet: false }))
+        setAlertMessage('❌ Sem internet\n\n💡 Aguarde ou recarregue')
+        setShowAlert(true)
+      }
     }
 
     window.addEventListener('focus', handleFocus, { capture: true })
@@ -264,12 +302,13 @@ function SystemHealthMonitor() {
     window.addEventListener('offline', handleOffline)
     document.addEventListener('visibilitychange', handleVisibility)
 
+    // Verificação periódica (só se logado e não no login)
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible' && user) {
-        console.log('[MONITOR] ⏰ Check periódico')
+      if (document.visibilityState === 'visible' && user && !isLoginPage()) {
+        console.log('[MONITOR] ⏰ Periódico')
         performHealthCheck('periódico')
       }
-    }, 30000)
+    }, 60000) // 60 segundos (economiza requests)
 
     return () => {
       clearCheckingTimeout()
@@ -279,7 +318,7 @@ function SystemHealthMonitor() {
       document.removeEventListener('visibilitychange', handleVisibility)
       clearInterval(interval)
     }
-  }, [user])
+  }, [user, location])
 
   const handleReload = () => {
     console.log('[MONITOR] 🔄 Recarregando...')
@@ -294,7 +333,14 @@ function SystemHealthMonitor() {
   }
 
   // ============================================================================
-  // RENDER: Indicador (quando NÃO tem alerta)
+  // NÃO RENDERIZAR NA PÁGINA DE LOGIN
+  // ============================================================================
+  if (isLoginPage() || !user) {
+    return null
+  }
+
+  // ============================================================================
+  // INDICADOR
   // ============================================================================
   if (!showAlert) {
     return (
@@ -320,11 +366,10 @@ function SystemHealthMonitor() {
   }
 
   // ============================================================================
-  // RENDER: Alerta (POR CIMA DE TUDO!)
+  // ALERTA
   // ============================================================================
   return (
     <>
-      {/* Overlay com z-index ALTÍSSIMO */}
       <div 
         className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center p-4"
         style={{ zIndex: 99999 }}
@@ -398,7 +443,7 @@ function SystemHealthMonitor() {
 
           <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
             <p className="text-xs text-blue-800 text-center">
-              ℹ️ <strong>Aguarde a conexão voltar</strong> ou recarregue a página
+              ℹ️ <strong>Aguarde</strong> a conexão voltar ou recarregue
             </p>
           </div>
 
