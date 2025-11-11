@@ -336,11 +336,9 @@ const updateRecord = async (dateKey, field, value) => {
       if (record && record.tipo === 'feriado') {
         totalHorasFeriado += worked
       } else if (record && record.tipo === 'folga') {
-        // Folga: conta como atraso (penaliza)
         totalDelays += expected
         totalExpected += expected
       } else if (record && record.tipo === 'falta') {
-        // Falta: conta como atraso (penaliza)
         totalDelays += expected
         totalExpected += expected
       } else {
@@ -352,36 +350,78 @@ const updateRecord = async (dateKey, field, value) => {
       }
     })
     
-    const totalFaixa1Calculado = Math.round(totalFaixa1 * 1.5)
-    const totalFaixa2Calculado = Math.round(totalFaixa2 * 2)
+  const totalHorasExtras = totalFaixa1 + totalFaixa2
+    
+    let saldoFinal
+    let totalFaixa1Calculado
+    let totalFaixa2Calculado
+    
+    if (totalHorasExtras > totalDelays) {
+      // ============================================
+      // CASO 1: TEM HORAS EXTRAS SOBRANDO
+      // ============================================
+      // Fórmula: (Faixa1 - Atrasos) × 1.5 + (Faixa2 × 2)
+      
+      const saldoFaixa1 = totalFaixa1 - totalDelays  // Subtrai atrasos primeiro
+      
+      if (saldoFaixa1 > 0) {
+        // Ainda sobrou da faixa 1 depois de descontar atrasos
+        totalFaixa1Calculado = Math.round(saldoFaixa1 * 1.5)
+        totalFaixa2Calculado = Math.round(totalFaixa2 * 2)
+        saldoFinal = totalFaixa1Calculado + totalFaixa2Calculado
+      } else {
+        // Atrasos consumiram toda faixa1, agora consome faixa2
+        const saldoFaixa2 = totalFaixa2 + saldoFaixa1  // saldoFaixa1 é negativo
+        
+        if (saldoFaixa2 > 0) {
+          // Ainda sobrou da faixa 2
+          totalFaixa1Calculado = 0
+          totalFaixa2Calculado = Math.round(saldoFaixa2 * 2)
+          saldoFinal = totalFaixa2Calculado
+        } else {
+          // Deve horas mesmo tendo extras (caso raro)
+          totalFaixa1Calculado = 0
+          totalFaixa2Calculado = 0
+          saldoFinal = saldoFaixa2
+        }
+      }
+      
+    } else {
+      // ============================================
+      // CASO 2: DEVE HORAS (atrasos >= extras)
+      // ============================================
+      // Não aplica multiplicador
+      
+      totalFaixa1Calculado = totalFaixa1
+      totalFaixa2Calculado = totalFaixa2
+      saldoFinal = totalHorasExtras - totalDelays
+    }
     
     return { 
       totalWorked,
       totalDelays, 
-      totalFaixa1, 
+      totalFaixa1,
       totalFaixa2, 
-      totalFaixa1Calculado, 
-      totalFaixa2Calculado, 
+      totalFaixa1Calculado,
+      totalFaixa2Calculado,
       totalHorasFeriado,
+      totalHorasExtras,
+      saldoFinal
     }
   }
 
   const salvarSaldo = async () => {
     try {
       const totals = calculateTotals()
-      let saldo
-    if (totals.totalFaixa1 > totals.totalDelays) {
-      // Horas extras > Atrasos: aplica multiplicador
-      const diferenca = totals.totalFaixa1 - totals.totalDelays
-      saldo = Math.round(diferenca * 1.5) + totals.totalFaixa2Calculado
-    } else {
-      // Horas extras <= Atrasos: sem multiplicador (arredondado)
-      saldo = Math.round(totals.totalFaixa1 - totals.totalDelays)
-    }    
+      const saldo = totals.saldoFinal
+      
       await upsertBancoHoras(selectedFuncionario, selectedYear, selectedMonth, saldo)
       
       const funcionarioNome = funcionarios.find(e => e.id === selectedFuncionario)?.nome || 'Funcionário'
-      showNotification(`Saldo de ${funcionarioNome} salvo: ${minutesToTime(saldo)} em ${months[selectedMonth]}/${selectedYear}`, 'success')
+      showNotification(
+        `Saldo de ${funcionarioNome} salvo: ${minutesToTime(saldo)} em ${months[selectedMonth]}/${selectedYear}`, 
+        'success'
+      )
       
       await loadBancoHoras()
     } catch (error) {
@@ -661,7 +701,7 @@ const updateRecord = async (dateKey, field, value) => {
                 <td>${minutesToTime(totals.totalWorked)}</td>
                 <td>${minutesToTime(totals.totalDelays)}</td>
                 <td>${minutesToTime(totals.totalFaixa1Calculado + totals.totalFaixa2Calculado)}</td>
-                <td><strong>${saldo >= 0 ? '+' : ''}${minutesToTime(saldo)}</strong></td>
+                <td><strong>${totals.saldoFinal >= 0 ? '+' : ''}${minutesToTime(totals.saldoFinal)}</strong></td>
             </tr>
             </tbody>
         </table>
@@ -693,15 +733,6 @@ const updateRecord = async (dateKey, field, value) => {
 
   const days = generateMonthDays(selectedYear, selectedMonth)
   const totals = calculateTotals()
-  let saldo
-  if (totals.totalFaixa1 > totals.totalDelays) {
-    // Horas extras > Atrasos: aplica multiplicador
-    const diferenca = totals.totalFaixa1 - totals.totalDelays
-    saldo = Math.round(diferenca * 1.5) + totals.totalFaixa2Calculado
-  } else {
-    // Horas extras <= Atrasos: sem multiplicador (arredondado)
-    saldo = Math.round(totals.totalFaixa1 - totals.totalDelays)
-  }
 
   return (
     <div className="w-full min-h-screen bg-gray-100 p-4">
@@ -1076,28 +1107,35 @@ const updateRecord = async (dateKey, field, value) => {
 
                     <td className="border border-purple-700 p-2 text-center">
                       <div className="flex flex-col">
-                        {/* 1. MOSTRAR O TOTAL (Resultado da operação) */}
                         <span className="font-semibold">
-                          {minutesToTime((totals.totalFaixa1 - totals.totalDelays) * 1.5)}
+                          {minutesToTime(totals.totalFaixa1Calculado)}
                         </span>
                         
-                        {/* 2. MOSTRAR A OPERAÇÃO ABAIXO */}
                         <span className="text-xs text-purple-200">
-                          {minutesToTime(totals.totalFaixa1 - totals.totalDelays)} × 1.5
+                          {totals.totalHorasExtras > totals.totalDelays
+                            ? `${minutesToTime(totals.totalFaixa1)} × 1.5`
+                            : `sem acréscimo`
+                          }
                         </span>
                       </div>
                     </td>
+
 
                     <td className="border border-purple-700 p-2 text-center">
                       <div className="flex flex-col">
                         <span>{minutesToTime(totals.totalFaixa2Calculado)}</span>
-                        <span className="text-xs text-purple-200">({minutesToTime(totals.totalFaixa2)} × 2)</span>
+                        <span className="text-xs text-purple-200">
+                          {totals.totalHorasExtras > totals.totalDelays
+                            ? `(${minutesToTime(totals.totalFaixa2)} × 2)`
+                            : `sem acréscimo`
+                          }
+                        </span>
                       </div>
                     </td>
 
                     <td className="border border-purple-700 p-2 text-center">
-                      <span className={saldo >= 0 ? 'text-green-300' : 'text-red-300'}>
-                        SALDO: {minutesToTime(saldo)}
+                      <span className={totals.saldoFinal >= 0 ? 'text-green-300' : 'text-red-300'}>
+                        SALDO: {minutesToTime(totals.saldoFinal)}
                       </span>
                     </td>
                   </tr>
